@@ -1,0 +1,225 @@
+/* 1. IMPORT FONT WAJIB DI PALING ATAS */
+@import url('https://fonts.googleapis.com/css2?family=Anonymous+Pro:wght@400;700&family=IBM+Plex+Mono:wght@400;600&family=Inter:wght@400;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #000000;
+  --foreground: #ededed;
+  --accent-tertiary: 137 86% 59%;
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+  font-family: 'Inter', sans-serif;
+  overflow-x: hidden;
+}
+
+/* 2. CUSTOM SCROLLBAR */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: #0f1014;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #333;
+  border-radius: 3px;
+}
+
+@layer components {
+  /* --- TABLE SYSTEM --- */
+  .aj-table-wrapper {
+    background: #0d0d0d;
+    border: 0.5px solid #707170;
+    border-radius: 15px;
+    padding: 20px 24px;
+    width: 100%;
+    min-height: 500px;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+  }
+
+  .aj-th {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 14px;
+    font-weight: 400;
+    color: #8a9886;
+    padding-bottom: 12px;
+    text-transform: uppercase;
+    border-bottom: none; /* 🔥 Hapus border bawah header */
+  }
+
+  .aj-tr {
+    border-top: 0.5px solid rgba(112, 113, 112, 0.3);
+  }
+
+  /* 🔥 Baris pertama di dalam tbody GAK USAH pake border */
+  .aj-tr:first-child {
+    border-top: none;
+  }
+
+  .aj-card-title {
+    font-family: 'Inter', sans-serif;
+    font-weight: 700;
+    font-size: 15px;
+    color: #ffffff;
+  }
+  .aj-card-sub {
+    font-family: 'Anonymous Pro', monospace;
+    font-size: 13px;
+    color: #6b6b6b;
+  }
+  .aj-check-id {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+    color: #9effba;
+    text-transform: uppercase;
+  }
+
+  /* --- PAGINATION SESUAI SVG (204x46 Capsule) --- */
+  .aj-pagination-box {
+    width: fit-content;    /* 🔥 KUNCI: Biar lebar ngikutin isi */
+    min-width: 140px;      /* Batas minimal biar tetep cantik */
+    height: 46px;
+    background: #000000;
+    border: 0.5px solid #707170;
+    border-radius: 23px;
+    display: flex;
+    align-items: center;
+    justify-content: center; /* Kumpulin semua di tengah */
+    padding: 0 16px;       /* Kasih napas di kiri kanan kapsul */
+    gap: 8px;              /* Jarak antar elemen (panah & angka) */
+    flex-shrink: 0;
+    transition: all 0.3s ease; /* 🔥 Biar pas ngelebar/nyempit halus */
+  }
+
+  /* Slot Panah (Kiri Kanan) */
+  .aj-page-arrow-slot {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+  }
+
+  /* Area Angka (Tengah) */
+  .aj-pagination-numbers {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px; /* Jarak antar angka */
+  }
+
+  /* KOTAK HIJAU (Active) - Lebar 28px cukup */
+  .aj-page-active {
+    width: 32px;
+    height: 32px;
+    background: #9EFFBA;
+    box-shadow: 0px 0px 6px rgba(158, 255, 186, 0.4);
+    border-radius: 5px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #000000;
+    font-family: 'Inter', sans-serif;
+    font-weight: 700;
+    font-size: 13px;
+    flex-shrink: 0;
+  }
+
+  /* Angka Biasa (Non-Active) - 🔥 PENTING: Lebar Otomatis */
+  .aj-page-link {
+    min-width: 24px;
+    font-family: 'Inter', sans-serif;
+    font-size: 13px;
+    color: #FFFFFF;
+    cursor: pointer;
+    text-align: center;
+    padding: 0 4px;
+  }
+
+  .aj-page-link:hover {
+    color: #9effba;
+  }
+
+  /* Dots (...) */
+  .aj-page-dots {
+    color: #707170;
+    font-size: 10px;
+    padding: 0 1px;
+    margin-top: 4px; /* Biar sejajar visual */
+  }
+
+  /* Custom Arrow Icons */
+  .aj-arrow-icon {
+    transition: stroke 0.2s;
+  }
+  button:disabled .aj-arrow-icon {
+    stroke: #404040;
+    cursor: not-allowed;
+  }
+  button:not(:disabled) .aj-arrow-icon {
+    stroke: white;
+    cursor: pointer;
+  }
+  button:not(:disabled):hover .aj-arrow-icon {
+    stroke: #9effba;
+  }
+
+  /* Kalau button disabled, warnanya abu (#707170 sesuai SVG kiri) */
+  button:disabled .aj-arrow-icon {
+    stroke: #707170;
+    cursor: not-allowed;
+  }
+  /* Kalau aktif, warnanya putih (sesuai SVG kanan) */
+  button:not(:disabled) .aj-arrow-icon {
+    stroke: white;
+    cursor: pointer;
+  }
+  button:not(:disabled):hover .aj-arrow-icon {
+    stroke: #9effba; /* Efek hover ijo */
+  }
+
+  /* --- BADGE STATUS (SESUAI FIGMA) --- */
+  
+  /* Active Status */
+  .aj-status-active {
+    height: 32px;            /* 🔥 Kecilin jadi 32px (tadinya 38px) */
+    min-width: 84px;         /* Lebar minimal biar gak kekecilan */
+    padding: 0 16px;         /* Padding kanan-kiri (px-4) */
+    background: #9EFFBA;
+    color: #0D0D0D;
+    font-family: 'IBM Plex Mono', monospace;
+    font-weight: 700;        /* Font Medium/Bold */
+    font-size: 12px;         /* Font 12px (text-xs/sm) */
+    border-radius: 9999px;   /* rounded-full */
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0px 0px 6px rgba(158, 255, 186, 0.4);
+    flex-shrink: 0;
+  }
+
+  /* Disabled Status */
+  .aj-status-disabled {
+    height: 32px;            /* 🔥 Samain 32px */
+    min-width: 90px;         /* Lebar minimal disesuaikan teks */
+    padding: 0 16px;         /* Padding kanan-kiri (px-4) */
+    background: #0D0D0D;
+    border: 1px solid #262626;
+    color: #707170;
+    font-family: 'IBM Plex Mono', monospace;
+    font-weight: 600;
+    font-size: 12px;
+    border-radius: 9999px;   /* rounded-full */
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+}
