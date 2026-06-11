@@ -87,7 +87,6 @@ body {
     width: fit-content;    /* 🔥 KUNCI: Biar lebar ngikutin isi */
     min-width: 140px;      /* Batas minimal biar tetep cantik */
     height: 46px;
-    background: #000000;
     border: 0.5px solid #707170;
     border-radius: 23px;
     display: flex;

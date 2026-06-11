@@ -396,11 +396,10 @@ export default function GreenTable () {
               </div>
             ) : (
               <>
-                <div className='px-8 pt-8 pb-4 overflow-x-auto'>
+                <div className='px-8 pt-0 pb-4 overflow-x-auto'>
                   <table className='w-full text-left border-collapse table-fixed'>
                     <thead>
                       <tr className='h-[70px]'>
-                        {' '}
                         {/* Tinggi header ditambah biar lega */}
                         <th className="pl-14 w-[120px] font-['IBM_Plex_Mono'] text-[14px] text-[#8A9886] font-normal uppercase">
                           IMAGE
@@ -426,79 +425,99 @@ export default function GreenTable () {
                       </tr>
                     </thead>
                     <tbody>
-                      {currentItems.map(item => (
+                      {currentItems.map((item, index) => (
                         <tr
                           key={item.ID}
-                          className='h-[85px] border-t border-[#707170]/30 hover:bg-white/[0.01] transition-all group'
+                          className={`h-[85px] hover:bg-white/[0.01] transition-all group ${
+                            index === 0
+                              ? 'border-t-0'
+                              : 'border-t border-[#707170]/30'
+                          }`}
                         >
-                          {' '}
-                          {/* Baris lebih tinggi (85px) */}
-                          <td className='pl-14'>
-                            <div
-                              className='w-[57px] h-[57px] bg-[#D9D9D9] rounded-[8px] overflow-hidden relative group/thumb cursor-pointer'
-                              onClick={() => {
-                                setEditingProduct(item)
-                                setNewImageUrl(item.image_url || '')
-                              }}
-                            >
-                              {item.image_url ? (
-                                <img
-                                  src={item.image_url}
-                                  className='w-full h-full object-cover'
-                                  alt=''
-                                />
-                              ) : (
-                                <div className='w-full h-full flex items-center justify-center'>
-                                  <ImageIcon
-                                    size={20}
-                                    className='text-gray-400'
+                          <td className='pl-14 align-middle'>
+                            <div className='flex items-center h-full'>
+                              <div
+                                className='w-[52px] h-[52px] bg-[#D9D9D9] rounded-[8px] overflow-hidden relative group/thumb cursor-pointer'
+                                onClick={() => {
+                                  setEditingProduct(item)
+                                  setNewImageUrl(item.image_url || '')
+                                }}
+                              >
+                                {item.image_url ? (
+                                  <img
+                                    src={item.image_url}
+                                    className='w-full h-full object-cover'
+                                    alt=''
                                   />
-                                </div>
-                              )}
-                              <div className='absolute inset-0 bg-black/40 opacity-0 group-hover/thumb:opacity-100 flex items-center justify-center transition-opacity'>
-                                <SquarePen
-                                  size={18}
-                                  className='text-[#9EFFBA]'
-                                />
+                                ) : (
+                                  <div className='w-full h-full flex items-center justify-center'>
+                                    <ImageIcon
+                                      size={18}
+                                      className='text-gray-400'
+                                    />
+                                  </div>
+                                )}
                               </div>
                             </div>
                           </td>
-                          <td className='px-6'>
-                            {' '}
-                            {/* Padding horizontal ditambah */}
-                            <div className='flex flex-col'>
-                              <span className="font-['Inter'] font-semibold text-[15px] text-white leading-tight">
+
+                          <td className='px-6 align-middle'>
+                            <div className='flex flex-col justify-center'>
+                              {/* PRODUCT NAME: font-semibold -> font-medium, 15px -> 14px */}
+                              <span className="font-['Inter'] font-medium text-[14px] text-white leading-tight">
                                 {item.name}
                               </span>
-                              <span className="font-['Anonymous_Pro'] text-[12px] text-[#6B6B6B] mt-1.5 uppercase">
+                              <span className="font-['Anonymous_Pro'] text-[11px] text-[#9EFFBA] mt-1 uppercase">
                                 {item.catalog_cardcode ||
                                   item.catalog?.cardcode ||
                                   '-'}
                               </span>
                             </div>
                           </td>
-                          <td className="font-['Inter'] font-medium text-[14px] text-white uppercase px-6">
+
+                          {/* PROVIDER: font-medium -> font-normal, 14px -> 13px */}
+                          <td className="font-['Inter'] font-normal text-[13px] text-white uppercase px-6 align-middle">
                             {item.provider || 'DIGIFLAZZ'}
                           </td>
-                          <td className="font-['Minecraftia'] text-[13px] text-white uppercase px-6">
+
+                          {/* SKU CODE: 13px -> 12px */}
+                          <td className="font-['IBM_Plex_Mono'] text-[13px] font-medium text-[#9EFFBA] uppercase px-6 align-middle tracking-wider">
                             {item.code || '-'}
                           </td>
-                          <td className="font-['Inter'] font-semibold text-[15px] text-[#3DF06F] px-6 text-right">
+
+                          {/* PRICE: font-semibold -> font-medium, 15px -> 14px */}
+                          <td className="font-['Inter'] font-medium text-[14px] text-[#3DF06F] px-6 text-right align-middle">
                             {formatRupiah(item.price)}
                           </td>
-                          <td className="font-['Minecraftia'] text-[15px] text-white text-center">
-                            {item.stock > 1000 ? '-' : item.stock}
+
+                          <td className='text-center align-middle'>
+                            <div className='flex items-center justify-center h-full'>
+                              {item.stock === 0 && item.is_active ? (
+                                <span className="font-['Minecraftia'] text-[16px] text-[#9EFFBA] inline-block transform -rotate-90 select-none">
+                                  8
+                                </span>
+                              ) : item.stock === 0 && !item.is_active ? (
+                                <span className="font-['IBM_Plex_Mono'] font-bold text-[13px] text-[#FF0000] uppercase tracking-tighter">
+                                  KOSONG
+                                </span>
+                              ) : (
+                                <span className="font-['IBM_Plex_Mono'] font-normal text-[14px] text-white">
+                                  {item.stock}
+                                </span>
+                              )}
+                            </div>
                           </td>
-                          <td className='pr-14'>
+
+                          <td className='pr-14 align-middle'>
                             <div className='flex justify-center'>
-                              {/* Status Rectangle dengan Padding Lega */}
+                              {/* STATUS: Kecilkan padding & font size */}
                               {item.is_active ? (
-                                <div className="px-6 min-w-[96px] h-[38px] bg-[#9EFFBA] shadow-[0px_0px_4px_#9EFFBA] rounded-[21.5px] flex items-center justify-center font-['IBM_Plex_Mono'] font-semibold text-[14px] text-[#0D0D0D]">
-                                  ACTIVE
+                                <div className="px-5 min-w-[85px] h-[32px] bg-[#9EFFBA] shadow-[0px_0px_4px_#9EFFBA] rounded-full flex items-center justify-center font-['IBM_Plex_Mono'] font-bold text-[12px] text-[#0D0D0D]">
+                                  ONLINE
                                 </div>
                               ) : (
-                                <div className="px-6 min-w-[110px] h-[40px] bg-[#0D0D0D] border border-[#262626] rounded-[21.5px] flex items-center justify-center font-['IBM_Plex_Mono'] font-semibold text-[14px] text-[#8A9886]">
-                                  DISABLED
+                                <div className="px-5 min-w-[95px] h-[32px] bg-[#0D0D0D] border border-[#262626] rounded-full flex items-center justify-center font-['IBM_Plex_Mono'] font-bold text-[12px] text-[#8A9886]">
+                                  OFFLINE
                                 </div>
                               )}
                             </div>
@@ -510,7 +529,7 @@ export default function GreenTable () {
                 </div>
 
                 {/* 3. PAGINATION SECTION (Layout Asli Lu) */}
-                <div className='mt-auto h-[60px] flex items-center justify-between px-10 border-t border-[#707170]/10'>
+                <div className='mt-auto h-[60px] flex items-center justify-between px-10'>
                   <span className="font-['Anonymous_Pro'] text-[15px] text-white">
                     Showing {(currentPage - 1) * itemsPerPage + 1}-
                     {Math.min(
