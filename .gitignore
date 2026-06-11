@@ -1,19 +1,34 @@
-# node
+# ========================
+# FRONTEND (Next.js / Node)
+# ========================
+frontend/node_modules/
 node_modules/
+frontend/.next/
+frontend/out/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 
-# next
-.next/
-
-# backend
+# ========================
+# BACKEND (Golang)
+# ========================
 backend/tmp/
-backend/.env
+backend/main.exe
+backend/main
+backend/*.exe
 
-# env global
+# ========================
+# ENVIRONMENT VARIABLES
+# ========================
 .env
-.env.*
+.env.local
+.env.*.local
 
-# misc
+# ========================
+# LOGS & LARGE FILES
+# ========================
+*.log
 *.csv
 tree.txt
 tree-clean.txt
-
+.DS_Store
