@@ -89,6 +89,11 @@ export default function CyberneticGridShader ({
       }
     }
 
+    const lastPointer = {
+      x: window.innerWidth / 2,
+      y: window.innerHeight / 2
+    }
+
     const material = new THREE.ShaderMaterial({
       vertexShader,
       fragmentShader,
@@ -99,6 +104,15 @@ export default function CyberneticGridShader ({
     const mesh = new THREE.Mesh(geometry, material)
     scene.add(mesh)
 
+    const updateMousePosition = () => {
+      const bounds = container.getBoundingClientRect()
+
+      uniforms.iMouse.value.set(
+        lastPointer.x - bounds.left,
+        bounds.height - (lastPointer.y - bounds.top)
+      )
+    }
+
     const onResize = () => {
       const width = container.clientWidth
       const height = container.clientHeight
@@ -107,16 +121,16 @@ export default function CyberneticGridShader ({
 
       renderer.setSize(width, height, false)
       uniforms.iResolution.value.set(width, height)
+      updateMousePosition()
     }
 
     const onPointerMove = (event: PointerEvent) => {
-      const bounds = container.getBoundingClientRect()
-
-      uniforms.iMouse.value.set(
-        event.clientX - bounds.left,
-        bounds.height - (event.clientY - bounds.top)
-      )
+      lastPointer.x = event.clientX
+      lastPointer.y = event.clientY
+      updateMousePosition()
     }
+
+    const onScroll = () => updateMousePosition()
 
     const renderFrame = () => {
       uniforms.iTime.value = clock.getElapsedTime()
@@ -127,6 +141,10 @@ export default function CyberneticGridShader ({
     resizeObserver.observe(container)
 
     window.addEventListener('pointermove', onPointerMove, { passive: true })
+    window.addEventListener('scroll', onScroll, {
+      passive: true,
+      capture: true
+    })
     onResize()
     renderer.setAnimationLoop(renderFrame)
 
@@ -144,6 +162,7 @@ export default function CyberneticGridShader ({
 
     return () => {
       window.removeEventListener('pointermove', onPointerMove)
+      window.removeEventListener('scroll', onScroll, true)
       resizeObserver.disconnect()
       visibilityObserver.disconnect()
       renderer.setAnimationLoop(null)

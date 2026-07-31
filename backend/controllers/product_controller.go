@@ -25,6 +25,7 @@ func GetProducts(c *fiber.Ctx) error {
 	var products []models.Product
 	if err := database.DB.
 		Preload("Catalog").
+		Preload("ProductGroup").
 		Order("id desc").
 		Find(&products).Error; err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": "Gagal ambil data produk"})
@@ -197,7 +198,7 @@ func RunDigiflazzSync() (int, int, []string, error) { // <--- Perhatikan return 
 			} else if existing.DeletedAt.Valid {
 				continue
 			} else {
-				tx.Model(&existing).Updates(map[string]interface{}{"name": name, "is_active": isActive, "price": price, "stock": finalStock, "catalog_card_code": smartCode})
+				tx.Model(&existing).Updates(map[string]interface{}{"name": name, "is_active": isActive, "price": price, "stock": finalStock, "catalog_cardcode": smartCode})
 			}
 
 			count++
@@ -291,6 +292,7 @@ func UpdateProduct(c *fiber.Ctx) error {
 		AdminEnabled    *bool           `json:"admin_enabled"`
 		ImageURL        *string         `json:"image_url"`
 		CatalogCardCode *string         `json:"catalog_cardcode"`
+		SortOrder       *int            `json:"sort_order"`
 	}
 	if err := c.BodyParser(&input); err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": "Input produk tidak valid"})
@@ -316,7 +318,26 @@ func UpdateProduct(c *fiber.Ctx) error {
 		updates["image_url"] = *input.ImageURL
 	}
 	if input.CatalogCardCode != nil {
-		updates["catalog_cardcode"] = *input.CatalogCardCode
+		catalogCardCode := strings.TrimSpace(*input.CatalogCardCode)
+		if catalogCardCode == "" {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"error": "catalog_cardcode tidak boleh kosong",
+			})
+		}
+
+		updates["catalog_cardcode"] = catalogCardCode
+	}
+	if input.SortOrder != nil {
+		if *input.SortOrder < 0 {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"error": "sort_order tidak boleh negatif",
+			})
+		}
+		updates["sort_order"] = *input.SortOrder
+	}
+	if catalogCardCode, changesCatalog := updates["catalog_cardcode"].(string); changesCatalog && catalogCardCode != product.CatalogCardCode {
+		updates["product_group_id"] = nil
+		updates["sort_order"] = 0
 	}
 
 	if len(input.OriginalPrice) > 0 {
@@ -341,7 +362,27 @@ func UpdateProduct(c *fiber.Ctx) error {
 	}
 
 	if len(updates) > 0 {
-		if err := database.DB.Model(&product).Updates(updates).Error; err != nil {
+		err := database.DB.Transaction(func(tx *gorm.DB) error {
+			if input.CatalogCardCode != nil {
+				var catalogCount int64
+				if err := tx.Model(&models.Catalog{}).
+					Where("card_code = ?", updates["catalog_cardcode"]).
+					Count(&catalogCount).Error; err != nil {
+					return err
+				}
+				if catalogCount == 0 {
+					return gorm.ErrRecordNotFound
+				}
+			}
+
+			return tx.Model(&product).Updates(updates).Error
+		})
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"error": "Katalog tujuan tidak ditemukan",
+			})
+		}
+		if err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 		}
 	}
@@ -507,6 +548,18 @@ func BulkUpdateProducts(c *fiber.Ctx) error {
 
 		if matched == 0 {
 			return nil
+		}
+
+		if catalogCardCode != "" {
+			if err := tx.Model(&models.Product{}).
+				Where("id IN ?", productIDs).
+				Where("COALESCE(catalog_cardcode, '') <> ?", catalogCardCode).
+				Updates(map[string]interface{}{
+					"product_group_id": nil,
+					"sort_order":       0,
+				}).Error; err != nil {
+				return err
+			}
 		}
 
 		result := tx.Model(&models.Product{}).

@@ -13,12 +13,17 @@ import {
   Search, Package, AlertTriangle, TrendingUp,
   Edit, Gamepad2, Smartphone,
   Zap, Wallet, Loader2, RefreshCw, ListChecks,
-  Power, PowerOff, MoveRight, X, Info
+  Power, PowerOff, MoveRight, X, Info, FolderTree
 } from 'lucide-react'
 
 // 🔥 1. IMPORT SATPAM 401
 import { useApi } from '@/hooks/useApi'
 import PendingProductsTable from '@/components/PendingProductsTable'
+import ProductGroupManager, {
+  type ProductGroup,
+  type ProductGroupFilter,
+  type ProductGroupInput
+} from '@/components/ProductGroupManager'
 import { Checkbox } from '@/components/ui/checkbox'
 import { getProductSellingPrice } from '@/lib/pricing'
 
@@ -30,6 +35,7 @@ interface Catalog {
   name: string;
   cardcode: string;
   category_id?: string | number;
+  category?: string;
 }
 
 interface Product {
@@ -46,6 +52,9 @@ interface Product {
   catalog?: Catalog;
   image_url?: string;
   original_price?: number | null;
+  product_group_id?: number | null;
+  product_group?: ProductGroup | null;
+  sort_order?: number;
 }
 
 interface ProductEditForm {
@@ -53,7 +62,7 @@ interface ProductEditForm {
   original_price: string;
 }
 
-type BulkDialog = 'edit' | 'status' | 'move' | null
+type BulkDialog = 'edit' | 'status' | 'move' | 'group' | null
 
 interface BulkEditForm {
   applyStatus: boolean;
@@ -80,6 +89,17 @@ interface BulkAllowedChanges {
 interface BulkFeedback {
   type: 'success' | 'error';
   message: string;
+}
+
+interface ProductGroupPayload {
+  ID?: number;
+  id?: number;
+  name?: string;
+  catalog_cardcode?: string;
+  sort_order?: number;
+  is_active?: boolean;
+  product_count?: number;
+  products?: Array<{ ID?: number; id?: number }>;
 }
 
 const disabledBulkFields = [
@@ -115,6 +135,83 @@ function isValidBulkImageURL(imageUrl: string) {
   } catch {
     return false
   }
+}
+
+function getProductCatalogCode(product: Product) {
+  return product.catalog_cardcode || product.catalog?.cardcode || ''
+}
+
+function getProductGroupID(product: Product) {
+  return product.product_group_id ?? product.product_group?.ID ?? null
+}
+
+function getPayloadError(payload: unknown, fallback: string) {
+  if (payload && typeof payload === 'object') {
+    const error = (payload as { error?: unknown }).error
+    if (typeof error === 'string' && error.trim()) return error
+  }
+
+  return fallback
+}
+
+async function readJSONPayload(response: Response): Promise<unknown> {
+  try {
+    return await response.json()
+  } catch {
+    return null
+  }
+}
+
+function normalizeProductGroups(
+  payload: unknown,
+  catalogCardCode: string
+): ProductGroup[] {
+  let rawGroups: unknown[] = []
+
+  if (Array.isArray(payload)) {
+    rawGroups = payload
+  } else if (payload && typeof payload === 'object') {
+    const objectPayload = payload as {
+      product_groups?: unknown;
+      data?: unknown;
+    }
+
+    if (Array.isArray(objectPayload.product_groups)) {
+      rawGroups = objectPayload.product_groups
+    } else if (Array.isArray(objectPayload.data)) {
+      rawGroups = objectPayload.data
+    }
+  }
+
+  return rawGroups
+    .map((rawGroup): ProductGroup | null => {
+      if (!rawGroup || typeof rawGroup !== 'object') return null
+
+      const group = rawGroup as ProductGroupPayload
+      const groupID = group.ID ?? group.id
+      if (!groupID || typeof group.name !== 'string') return null
+
+      const products = Array.isArray(group.products)
+        ? group.products
+            .map(product => {
+              const productID = product.ID ?? product.id
+              return productID ? { ID: productID } : null
+            })
+            .filter((product): product is { ID: number } => product !== null)
+        : undefined
+
+      return {
+        ID: groupID,
+        name: group.name,
+        catalog_cardcode: group.catalog_cardcode || catalogCardCode,
+        sort_order: Number.isFinite(group.sort_order) ? group.sort_order as number : 0,
+        is_active: group.is_active !== false,
+        product_count: group.product_count,
+        products
+      }
+    })
+    .filter((group): group is ProductGroup => group !== null)
+    .sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name))
 }
 
 const mainCategories = [
@@ -255,7 +352,7 @@ function ProductTableThumbnail({
 
 export default function ProductsPage() {
   // 🔥 2. PANGGIL METHOD GET & POST DARI HOOK LU
-  const { get, post, put, patch } = useApi()
+  const { get, post, put, patch, delete: deleteRequest } = useApi()
 
   // ==========================================
   // STATE MANAGEMENT
@@ -270,6 +367,15 @@ export default function ProductsPage() {
 
   const [activeCategory, setActiveCategory] = useState('all')
   const [activeCatalog, setActiveCatalog] = useState('all')
+  const [activeGroupFilter, setActiveGroupFilter] =
+    useState<ProductGroupFilter>('all')
+  const [productGroups, setProductGroups] = useState<ProductGroup[]>([])
+  const [productGroupsLoading, setProductGroupsLoading] = useState(false)
+  const [productGroupsLoadError, setProductGroupsLoadError] = useState<string | null>(null)
+  const [isProductGroupMutating, setIsProductGroupMutating] = useState(false)
+  const activeCatalogRef = useRef('all')
+  const productGroupRequestIDRef = useRef(0)
+  const productGroupMutationLockRef = useRef(false)
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedItems, setSelectedItems] = useState<number[]>([])
   const [editingProduct, setEditingProduct] = useState<Product | null>(null)
@@ -285,8 +391,11 @@ export default function ProductsPage() {
   )
   const [pendingBulkStatus, setPendingBulkStatus] = useState(true)
   const [moveCatalogCardCode, setMoveCatalogCardCode] = useState('')
+  const [assignmentGroupValue, setAssignmentGroupValue] = useState('')
   const [isBulkActionLoading, setIsBulkActionLoading] = useState(false)
+  const [isGroupAssignmentLoading, setIsGroupAssignmentLoading] = useState(false)
   const bulkActionLockRef = useRef(false)
+  const groupAssignmentLockRef = useRef(false)
   const [bulkFeedback, setBulkFeedback] = useState<BulkFeedback | null>(null)
 
   // ==========================================
@@ -322,9 +431,70 @@ export default function ProductsPage() {
     }
   }, [get]) // Masukin get ke dependency array
 
+  const fetchProductGroups = useCallback(async (catalogCardCode: string) => {
+    if (catalogCardCode === 'all') {
+      productGroupRequestIDRef.current += 1
+      setProductGroups([])
+      setProductGroupsLoadError(null)
+      setProductGroupsLoading(false)
+      return
+    }
+
+    if (catalogCardCode !== activeCatalogRef.current) return
+
+    const requestID = ++productGroupRequestIDRef.current
+
+    setProductGroupsLoading(true)
+    setProductGroupsLoadError(null)
+
+    try {
+      const response = await get(
+        `/admin/catalogs/${encodeURIComponent(catalogCardCode)}/product-groups`
+      )
+      const payload = await readJSONPayload(response)
+
+      if (!response.ok) {
+        throw new Error(
+          getPayloadError(payload, 'Kelompok produk gagal dimuat.')
+        )
+      }
+
+      if (
+        requestID !== productGroupRequestIDRef.current ||
+        catalogCardCode !== activeCatalogRef.current
+      ) return
+
+      setProductGroups(normalizeProductGroups(payload, catalogCardCode))
+    } catch (error) {
+      if (
+        requestID !== productGroupRequestIDRef.current ||
+        catalogCardCode !== activeCatalogRef.current
+      ) return
+
+      setProductGroups([])
+      setProductGroupsLoadError(
+        error instanceof Error
+          ? error.message
+          : 'Kelompok produk gagal dimuat.'
+      )
+    } finally {
+      if (
+        requestID === productGroupRequestIDRef.current &&
+        catalogCardCode === activeCatalogRef.current
+      ) {
+        setProductGroupsLoading(false)
+      }
+    }
+  }, [get])
+
   useEffect(() => {
     fetchAllData()
   }, [fetchAllData])
+
+  useEffect(() => {
+    if (activeCatalog === 'all') return
+    void fetchProductGroups(activeCatalog)
+  }, [activeCatalog, fetchProductGroups])
 
   const handleSyncAPI = async (provider = 'all') => {
     setIsSyncing(true)
@@ -421,6 +591,100 @@ export default function ProductsPage() {
     }
   }
 
+  const runProductGroupMutation = async (
+    operation: () => Promise<void>
+  ) => {
+    if (productGroupMutationLockRef.current) {
+      throw new Error('Perubahan kelompok lain masih diproses.')
+    }
+
+    productGroupMutationLockRef.current = true
+    setIsProductGroupMutating(true)
+
+    try {
+      await operation()
+    } finally {
+      productGroupMutationLockRef.current = false
+      setIsProductGroupMutating(false)
+    }
+  }
+
+  const handleCreateProductGroup = async (input: ProductGroupInput) => {
+    const catalogCardCode = activeCatalog
+    if (catalogCardCode === 'all') {
+      throw new Error('Pilih satu katalog sebelum membuat kelompok.')
+    }
+
+    await runProductGroupMutation(async () => {
+      const response = await post(
+        `/admin/catalogs/${encodeURIComponent(catalogCardCode)}/product-groups`,
+        input
+      )
+      const payload = await readJSONPayload(response)
+
+      if (!response.ok) {
+        throw new Error(
+          getPayloadError(payload, 'Kelompok produk gagal dibuat.')
+        )
+      }
+
+      await fetchProductGroups(catalogCardCode)
+    })
+  }
+
+  const handleUpdateProductGroup = async (
+    groupID: number,
+    input: ProductGroupInput
+  ) => {
+    const catalogCardCode = activeCatalog
+    if (catalogCardCode === 'all') {
+      throw new Error('Pilih satu katalog sebelum mengubah kelompok.')
+    }
+
+    await runProductGroupMutation(async () => {
+      const response = await patch(`/admin/product-groups/${groupID}`, input)
+      const payload = await readJSONPayload(response)
+
+      if (!response.ok) {
+        throw new Error(
+          getPayloadError(payload, 'Kelompok produk gagal diperbarui.')
+        )
+      }
+
+      await fetchProductGroups(catalogCardCode)
+    })
+  }
+
+  const handleDeleteProductGroup = async (group: ProductGroup) => {
+    const catalogCardCode = activeCatalog
+    if (
+      catalogCardCode === 'all' ||
+      group.catalog_cardcode !== catalogCardCode
+    ) {
+      throw new Error('Kelompok tidak cocok dengan katalog yang sedang dibuka.')
+    }
+
+    await runProductGroupMutation(async () => {
+      const response = await deleteRequest(`/admin/product-groups/${group.ID}`)
+      const payload = await readJSONPayload(response)
+
+      if (!response.ok) {
+        throw new Error(
+          getPayloadError(payload, 'Kelompok produk gagal dihapus.')
+        )
+      }
+
+      if (activeGroupFilter === group.ID) {
+        setActiveGroupFilter('ungrouped')
+      }
+
+      await Promise.all([
+        fetchAllData(),
+        fetchProductGroups(catalogCardCode)
+      ])
+    })
+  }
+
   // ==========================================
   // LOGIC & FILTERING
   // ==========================================
@@ -432,24 +696,87 @@ export default function ProductsPage() {
     })
   }, [catalogs, activeCategory])
 
+  const handleCatalogChange = (catalogCardCode: string) => {
+    productGroupRequestIDRef.current += 1
+    activeCatalogRef.current = catalogCardCode
+    setActiveCatalog(catalogCardCode)
+    setActiveGroupFilter('all')
+    setProductGroups([])
+    setProductGroupsLoadError(null)
+    setProductGroupsLoading(catalogCardCode !== 'all')
+  }
+
   const handleCategoryChange = (catId: string) => {
     setActiveCategory(catId)
-    setActiveCatalog('all')
+    handleCatalogChange('all')
   }
+
+  const productGroupByID = useMemo(
+    () => new Map(productGroups.map(group => [group.ID, group])),
+    [productGroups]
+  )
+
+  const activeCatalogProducts = useMemo(
+    () => activeCatalog === 'all'
+      ? []
+      : products.filter(
+          product => getProductCatalogCode(product) === activeCatalog
+        ),
+    [activeCatalog, products]
+  )
+
+  const groupProductCounts = useMemo(() => {
+    const counts: Record<number, number> = {}
+
+    activeCatalogProducts.forEach(product => {
+      const groupID = getProductGroupID(product)
+      if (groupID !== null) {
+        counts[groupID] = (counts[groupID] ?? 0) + 1
+      }
+    })
+
+    productGroups.forEach(group => {
+      if (counts[group.ID] === undefined) {
+        counts[group.ID] =
+          group.product_count ?? group.products?.length ?? 0
+      }
+    })
+
+    return counts
+  }, [activeCatalogProducts, productGroups])
+
+  const ungroupedProductCount = useMemo(
+    () => activeCatalogProducts.filter(
+      product => getProductGroupID(product) === null
+    ).length,
+    [activeCatalogProducts]
+  )
 
   const displayedProducts = useMemo(() => {
     return products.filter(p => {
-      const pCatalogCode = p.catalog_cardcode || p.catalog?.cardcode || ''
+      const pCatalogCode = getProductCatalogCode(p)
       const catalogInfo = catalogs.find(c => c.cardcode === pCatalogCode)
+      const productGroupID = getProductGroupID(p)
 
       const matchCategory = activeCategory === 'all' || catalogInfo?.category_id === activeCategory || !catalogInfo?.category_id
       const matchCatalog = activeCatalog === 'all' || pCatalogCode === activeCatalog
+      const matchGroup = activeGroupFilter === 'all' ||
+        (activeGroupFilter === 'ungrouped'
+          ? productGroupID === null
+          : productGroupID === activeGroupFilter)
       const matchSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                           (p.code && p.code.toLowerCase().includes(searchTerm.toLowerCase()))
 
-      return matchCategory && matchCatalog && matchSearch
+      return matchCategory && matchCatalog && matchGroup && matchSearch
     })
-  }, [products, catalogs, activeCategory, activeCatalog, searchTerm])
+  }, [
+    products,
+    catalogs,
+    activeCategory,
+    activeCatalog,
+    activeGroupFilter,
+    searchTerm
+  ])
 
   const displayedProductIDs = useMemo(
     () => displayedProducts.map(product => product.ID),
@@ -459,6 +786,37 @@ export default function ProductsPage() {
     () => new Set(selectedItems),
     [selectedItems]
   )
+  const selectedProducts = useMemo(
+    () => products.filter(product => selectedItemSet.has(product.ID)),
+    [products, selectedItemSet]
+  )
+  const selectedCatalogCodes = useMemo(
+    () => new Set(
+      selectedProducts.map(getProductCatalogCode).filter(Boolean)
+    ),
+    [selectedProducts]
+  )
+  const groupAssignmentIssue = useMemo(() => {
+    if (activeCatalog === 'all') {
+      return 'Pilih satu katalog untuk memasukkan produk ke kelompok.'
+    }
+    if (selectedProducts.length !== selectedItems.length) {
+      return 'Sebagian produk terpilih sudah tidak tersedia. Muat ulang inventory.'
+    }
+    if (
+      selectedCatalogCodes.size !== 1 ||
+      !selectedCatalogCodes.has(activeCatalog)
+    ) {
+      return 'Semua produk terpilih harus berasal dari katalog yang sedang dibuka.'
+    }
+
+    return null
+  }, [
+    activeCatalog,
+    selectedCatalogCodes,
+    selectedItems.length,
+    selectedProducts.length
+  ])
   const displayedSelectedCount = displayedProductIDs.filter(productID =>
     selectedItemSet.has(productID)
   ).length
@@ -494,7 +852,7 @@ export default function ProductsPage() {
   }
 
   const closeBulkDialog = () => {
-    if (isBulkActionLoading) return
+    if (isBulkActionLoading || isGroupAssignmentLoading) return
     setBulkDialog(null)
   }
 
@@ -517,6 +875,22 @@ export default function ProductsPage() {
     setMoveCatalogCardCode('')
     setBulkFeedback(null)
     setBulkDialog('move')
+  }
+
+  const showAssignProductGroupDialog = () => {
+    setEditingProduct(null)
+    setAssignmentGroupValue('')
+    setBulkFeedback(null)
+
+    if (groupAssignmentIssue) {
+      setBulkFeedback({
+        type: 'error',
+        message: groupAssignmentIssue
+      })
+      return
+    }
+
+    setBulkDialog('group')
   }
 
   const executeBulkUpdate = async (changes: BulkAllowedChanges) => {
@@ -616,8 +990,106 @@ export default function ProductsPage() {
     await executeBulkUpdate({ catalog_cardcode: catalogCardCode })
   }
 
+  const handleAssignProductGroup = async (
+    event: FormEvent<HTMLFormElement>
+  ) => {
+    event.preventDefault()
+
+    if (
+      groupAssignmentLockRef.current ||
+      selectedItems.length === 0
+    ) return
+
+    if (groupAssignmentIssue) {
+      setBulkFeedback({ type: 'error', message: groupAssignmentIssue })
+      return
+    }
+
+    if (!assignmentGroupValue) {
+      setBulkFeedback({
+        type: 'error',
+        message: 'Pilih kelompok tujuan atau Belum dikelompokkan.'
+      })
+      return
+    }
+
+    const catalogCardCode = activeCatalog
+    const productIDs = [...selectedItems]
+    let endpoint = '/admin/product-groups/unassign-products'
+    let targetLabel = 'Belum dikelompokkan'
+
+    if (assignmentGroupValue !== 'ungrouped') {
+      const groupID = Number(assignmentGroupValue)
+      const targetGroup = productGroups.find(group => group.ID === groupID)
+
+      if (
+        !Number.isInteger(groupID) ||
+        !targetGroup ||
+        targetGroup.catalog_cardcode !== catalogCardCode
+      ) {
+        setBulkFeedback({
+          type: 'error',
+          message: 'Kelompok tujuan tidak valid untuk katalog ini.'
+        })
+        return
+      }
+
+      endpoint = `/admin/product-groups/${groupID}/products`
+      targetLabel = targetGroup.name
+    }
+
+    groupAssignmentLockRef.current = true
+    setIsGroupAssignmentLoading(true)
+    setBulkFeedback(null)
+
+    try {
+      const response = await post(endpoint, { product_ids: productIDs })
+      const payload = await readJSONPayload(response)
+
+      if (!response.ok) {
+        throw new Error(
+          getPayloadError(payload, 'Pengelompokan produk gagal.')
+        )
+      }
+
+      const result = payload as Partial<BulkMutationResult> | null
+      const requested = result?.requested ?? productIDs.length
+      const matched = result?.matched ?? requested
+      const updated = result?.updated ?? matched
+      const missingCount = Math.max(0, requested - matched)
+
+      setBulkFeedback({
+        type: 'success',
+        message: missingCount > 0
+          ? `${updated} produk dipindahkan ke ${targetLabel}; ${missingCount} produk tidak ditemukan.`
+          : `${updated} produk berhasil dipindahkan ke ${targetLabel}.`
+      })
+      setBulkDialog(null)
+      setSelectedItems([])
+
+      await Promise.all([
+        fetchAllData(),
+        fetchProductGroups(catalogCardCode)
+      ])
+    } catch (error) {
+      setBulkFeedback({
+        type: 'error',
+        message:
+          error instanceof Error
+            ? error.message
+            : 'Pengelompokan produk gagal.'
+      })
+    } finally {
+      groupAssignmentLockRef.current = false
+      setIsGroupAssignmentLoading(false)
+    }
+  }
+
   const totalActive = products.filter(p => p.is_active).length
   const totalIssues = products.filter(p => !p.is_active || p.stock === 0).length
+  const activeCatalogInfo = activeCatalog === 'all'
+    ? null
+    : catalogs.find(catalog => catalog.cardcode === activeCatalog) ?? null
 
   const changeActiveTab = (tab: 'live' | 'pending') => {
     setActiveTab(tab)
@@ -720,7 +1192,7 @@ export default function ProductsPage() {
               <div className="flex gap-2 overflow-x-auto custom-scrollbar items-center pb-1">
                 <button
                   type="button"
-                  onClick={() => setActiveCatalog('all')}
+                  onClick={() => handleCatalogChange('all')}
                   onPointerUp={(event) => event.currentTarget.blur()}
                   className={`px-5 py-2.5 rounded-xl whitespace-nowrap transition-all font-bold text-xs uppercase tracking-wider focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#0084FF]/70 ${activeCatalog === 'all' ? 'bg-white/10 text-white shadow-sm' : 'text-white/40 hover:text-white hover:bg-white/5'}`}
                 >
@@ -737,7 +1209,7 @@ export default function ProductsPage() {
                       <button
                         key={cat.cardcode}
                         type="button"
-                        onClick={() => setActiveCatalog(cat.cardcode)}
+                        onClick={() => handleCatalogChange(cat.cardcode)}
                         onPointerUp={(event) => event.currentTarget.blur()}
                         className={`px-5 py-2.5 rounded-xl whitespace-nowrap transition-all font-bold text-xs tracking-wider focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#0084FF]/70 ${isActive ? 'bg-[#0084FF]/20 text-[#0084FF] border border-[#0084FF]/30 shadow-[inset_0_0_10px_rgba(0,132,255,0.2)]' : 'bg-transparent text-white/50 hover:text-white hover:bg-white/5 border border-transparent'}`}
                       >
@@ -748,6 +1220,31 @@ export default function ProductsPage() {
                 )}
               </div>
             </div>
+
+            {activeCatalogInfo ? (
+              <ProductGroupManager
+                catalog={activeCatalogInfo}
+                groups={productGroups}
+                loading={productGroupsLoading}
+                isMutating={isProductGroupMutating}
+                loadError={productGroupsLoadError}
+                activeFilter={activeGroupFilter}
+                totalCount={activeCatalogProducts.length}
+                ungroupedCount={ungroupedProductCount}
+                groupProductCounts={groupProductCounts}
+                onFilterChange={setActiveGroupFilter}
+                onCreate={handleCreateProductGroup}
+                onUpdate={handleUpdateProductGroup}
+                onDelete={handleDeleteProductGroup}
+                onRefresh={() => fetchProductGroups(activeCatalog)}
+              />
+            ) : (
+              <div className="flex items-start gap-3 rounded-2xl border border-dashed border-white/[0.08] bg-white/[0.018] px-4 py-3 text-xs leading-5 text-white/40">
+                <FolderTree size={16} className="mt-0.5 shrink-0 text-fuchsia-200/55" />
+                Pilih satu katalog di atas untuk membuat kelompok, mengatur urutan,
+                dan melihat produk yang belum dikelompokkan.
+              </div>
+            )}
 
             {/* TIER 3: SMART SEARCH & ACTIONS */}
             <div className="flex flex-col md:flex-row items-center gap-4 w-full mt-2">
@@ -793,7 +1290,7 @@ export default function ProductsPage() {
           {selectedItems.length > 0 && (
             <section
               aria-label="Aksi produk terpilih"
-              className="sticky top-4 z-40 mb-4 rounded-3xl border border-white/[0.08] bg-black/[0.035] p-4 backdrop-blur-md backdrop-saturate-150 sm:p-5"
+              className="sticky top-0 z-40 mb-4 rounded-3xl border border-white/[0.08] bg-black/[0.035] p-4 backdrop-blur-md backdrop-saturate-150 sm:p-5"
             >
               <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
                 <div className="flex items-center gap-3">
@@ -807,10 +1304,29 @@ export default function ProductsPage() {
                     <p className="mt-1 text-xs text-white/40">
                       Pilihan tetap tersimpan saat filter atau pencarian berubah.
                     </p>
+                    {groupAssignmentIssue && (
+                      <p className="mt-1 text-xs text-amber-200/65">
+                        {groupAssignmentIssue}
+                      </p>
+                    )}
                   </div>
                 </div>
 
                 <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    disabled={
+                      isBulkActionLoading ||
+                      isGroupAssignmentLoading ||
+                      productGroupsLoading ||
+                      Boolean(groupAssignmentIssue)
+                    }
+                    onClick={showAssignProductGroupDialog}
+                    title={groupAssignmentIssue || undefined}
+                    className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-fuchsia-300/25 bg-fuchsia-400/[0.1] px-3.5 text-xs font-semibold text-fuchsia-100 transition-colors hover:bg-fuchsia-400/[0.18] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-300/70 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    <FolderTree size={15} /> Masukkan ke kelompok
+                  </button>
                   <button
                     type="button"
                     disabled={isBulkActionLoading}
@@ -901,8 +1417,12 @@ export default function ProductsPage() {
                   ) : displayedProducts.length > 0 ? (
                     displayedProducts.map((p) => {
                       const isSelected = selectedItems.includes(p.ID);
-                      const pCatalogCode = p.catalog_cardcode || p.catalog?.cardcode || '';
+                      const pCatalogCode = getProductCatalogCode(p);
                       const catalogInfo = catalogs.find(c => c.cardcode === pCatalogCode);
+                      const productGroupID = getProductGroupID(p);
+                      const productGroupInfo = productGroupID === null
+                        ? null
+                        : productGroupByID.get(productGroupID) ?? p.product_group;
 
                       return (
                         <tr key={p.ID} className={`group h-[88px] border-b border-white/5 transition-colors hover:bg-white/[0.035] ${isSelected ? 'bg-[#0084FF]/[0.045]' : ''}`}>
@@ -918,9 +1438,18 @@ export default function ProductsPage() {
                               <div className="shrink-0"><ProductTableThumbnail imageUrl={p.image_url} productName={p.name} /></div>
                               <div className="min-w-0">
                                 <p className="line-clamp-2 font-sans text-sm font-bold leading-5 text-white/90">{p.name}</p>
-                                <span className="mt-1 inline-flex max-w-full truncate rounded bg-white/5 px-1.5 py-0.5 text-[9px] uppercase text-white/40">
-                                  {catalogInfo?.name || pCatalogCode || 'UNKNOWN'}
-                                </span>
+                                <div className="mt-1 flex max-w-full flex-wrap gap-1">
+                                  <span className="inline-flex max-w-full truncate rounded bg-white/5 px-1.5 py-0.5 text-[9px] uppercase text-white/40">
+                                    {catalogInfo?.name || pCatalogCode || 'UNKNOWN'}
+                                  </span>
+                                  <span className={`inline-flex max-w-full truncate rounded px-1.5 py-0.5 text-[9px] ${
+                                    productGroupInfo
+                                      ? 'bg-fuchsia-400/[0.08] text-fuchsia-200/65'
+                                      : 'bg-amber-400/[0.08] text-amber-200/65'
+                                  }`}>
+                                    {productGroupInfo?.name || 'Belum dikelompokkan'}
+                                  </span>
+                                </div>
                               </div>
                             </div>
                           </td>
@@ -1018,8 +1547,12 @@ export default function ProductsPage() {
                 ) : displayedProducts.length > 0 ? (
                   displayedProducts.map((p) => {
                     const isSelected = selectedItems.includes(p.ID)
-                    const pCatalogCode = p.catalog_cardcode || p.catalog?.cardcode || ''
+                    const pCatalogCode = getProductCatalogCode(p)
                     const catalogInfo = catalogs.find(c => c.cardcode === pCatalogCode)
+                    const productGroupID = getProductGroupID(p)
+                    const productGroupInfo = productGroupID === null
+                      ? null
+                      : productGroupByID.get(productGroupID) ?? p.product_group
 
                     return (
                       <article key={p.ID} className={`group rounded-2xl border p-4 transition-colors ${isSelected ? 'border-[#0084FF]/25 bg-[#0084FF]/[0.045]' : 'border-white/5 bg-white/[0.025]'}`}>
@@ -1030,7 +1563,16 @@ export default function ProductsPage() {
                           <ProductTableThumbnail imageUrl={p.image_url} productName={p.name} />
                           <div className="min-w-0 flex-1">
                             <h3 className="line-clamp-2 text-sm font-bold leading-5 text-white/90">{p.name}</h3>
-                            <span className="mt-1 inline-flex max-w-full truncate rounded bg-white/5 px-1.5 py-0.5 text-[9px] uppercase text-white/40">{catalogInfo?.name || pCatalogCode || 'UNKNOWN'}</span>
+                            <div className="mt-1 flex flex-wrap gap-1">
+                              <span className="inline-flex max-w-full truncate rounded bg-white/5 px-1.5 py-0.5 text-[9px] uppercase text-white/40">{catalogInfo?.name || pCatalogCode || 'UNKNOWN'}</span>
+                              <span className={`inline-flex max-w-full truncate rounded px-1.5 py-0.5 text-[9px] ${
+                                productGroupInfo
+                                  ? 'bg-fuchsia-400/[0.08] text-fuchsia-200/65'
+                                  : 'bg-amber-400/[0.08] text-amber-200/65'
+                              }`}>
+                                {productGroupInfo?.name || 'Belum dikelompokkan'}
+                              </span>
+                            </div>
                           </div>
                           <button type="button" onClick={() => openProductEditor(p)} aria-label={`Edit ${p.name}`} className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-white/45 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0084FF]/60">
                             <Edit size={18} />
@@ -1306,7 +1848,8 @@ export default function ProductsPage() {
                       Terapkan perubahan katalog
                     </span>
                     <span className="mt-1 block text-xs leading-5 text-white/40">
-                      Produk akan dipindahkan memakai cardcode katalog tujuan.
+                      Produk akan dipindahkan memakai cardcode katalog tujuan
+                      dan kelompok lamanya akan dilepas.
                     </span>
                   </span>
                 </Checkbox>
@@ -1557,7 +2100,8 @@ export default function ProductsPage() {
             </label>
             <p className="rounded-2xl border border-white/[0.07] bg-white/[0.025] px-4 py-3 text-xs leading-5 text-white/40">
               Product ID, SKU, harga, thumbnail, provider, dan stock tidak ikut
-              berubah.
+              berubah. Kelompok lama akan dilepas dan produk menjadi Belum
+              dikelompokkan di katalog tujuan.
             </p>
             <div className="flex justify-end gap-3">
               <button
@@ -1575,6 +2119,80 @@ export default function ProductsPage() {
               >
                 {isBulkActionLoading && <Loader2 size={16} className="animate-spin" />}
                 Pindahkan {selectedItems.length} produk
+              </button>
+            </div>
+          </form>
+        </BulkModal>
+      )}
+
+      {bulkDialog === 'group' && (
+        <BulkModal
+          title="Masukkan ke kelompok"
+          description={`${selectedItems.length} produk dari ${activeCatalogInfo?.name || activeCatalog} akan diperbarui kelompoknya.`}
+          titleId="bulk-product-group-title"
+          onClose={closeBulkDialog}
+          isBusy={isGroupAssignmentLoading}
+        >
+          <form onSubmit={handleAssignProductGroup} className="mt-7 space-y-5">
+            {bulkFeedback?.type === 'error' && (
+              <BulkFeedbackBanner feedback={bulkFeedback} />
+            )}
+
+            <label className="block text-xs font-medium text-white/60">
+              Kelompok tujuan
+              <select
+                value={assignmentGroupValue}
+                disabled={isGroupAssignmentLoading || productGroupsLoading}
+                onChange={event => setAssignmentGroupValue(event.target.value)}
+                className="mt-2 h-12 w-full rounded-2xl border border-white/10 bg-[#0b0e16] px-4 text-sm text-white outline-none focus:border-fuchsia-400/60 disabled:cursor-not-allowed disabled:opacity-45"
+              >
+                <option value="">Pilih kelompok</option>
+                <option value="ungrouped">Belum dikelompokkan</option>
+                {productGroups.map(group => (
+                  <option key={group.ID} value={String(group.ID)}>
+                    {group.name}{group.is_active ? '' : ' (nonaktif)'}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            {productGroups.length === 0 && !productGroupsLoading && (
+              <p className="rounded-2xl border border-amber-300/15 bg-amber-300/[0.055] px-4 py-3 text-xs leading-5 text-amber-100/65">
+                Belum ada kelompok di katalog ini. Tutup dialog lalu buat
+                kelompok baru, atau pilih Belum dikelompokkan.
+              </p>
+            )}
+
+            <div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] px-4 py-3 text-xs leading-5 text-white/45">
+              Semua produk terpilih telah diverifikasi berasal dari katalog{' '}
+              <strong className="text-white/75">
+                {activeCatalogInfo?.name || activeCatalog}
+              </strong>. Memilih kelompok lain akan memindahkan produk dari
+              kelompok lamanya.
+            </div>
+
+            <div className="flex justify-end gap-3">
+              <button
+                type="button"
+                disabled={isGroupAssignmentLoading}
+                onClick={closeBulkDialog}
+                className="min-h-11 rounded-full border border-white/10 px-5 text-sm text-white/55 hover:bg-white/5 disabled:opacity-40"
+              >
+                Batal
+              </button>
+              <button
+                type="submit"
+                disabled={
+                  isGroupAssignmentLoading ||
+                  productGroupsLoading ||
+                  !assignmentGroupValue
+                }
+                className="inline-flex min-h-11 items-center gap-2 rounded-full border border-fuchsia-300/30 bg-fuchsia-400/[0.14] px-6 text-sm font-semibold text-fuchsia-100 transition-colors hover:bg-fuchsia-400/[0.22] disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {isGroupAssignmentLoading && (
+                  <Loader2 size={16} className="animate-spin" />
+                )}
+                Simpan kelompok {selectedItems.length} produk
               </button>
             </div>
           </form>

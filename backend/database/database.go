@@ -52,6 +52,7 @@ func Connect() {
 	err = DB.AutoMigrate(
 		&models.User{},
 		&models.Catalog{},
+		&models.ProductGroup{},
 		&models.Product{},
 		&models.Transaction{},
 		&models.TransactionActivity{},
@@ -63,6 +64,10 @@ func Connect() {
 
 	if err != nil {
 		log.Fatal("❌ Gagal Migrasi Schema: ", err)
+	}
+
+	if err := migrateProductGroupIntegrity(); err != nil {
+		log.Fatal("Gagal migrasi integritas kelompok produk: ", err)
 	}
 
 	if err := migrateProductLifecycle(); err != nil {
@@ -89,6 +94,34 @@ func Connect() {
 	}
 
 	fmt.Println("✅ Database Preparation Complete!")
+}
+
+// migrateProductGroupIntegrity is intentionally idempotent. It repairs rows
+// that could have been written manually or by an older application version
+// before enforcing case-insensitive uniqueness for active groups.
+func migrateProductGroupIntegrity() error {
+	return DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec(`
+			UPDATE products AS product
+			SET product_group_id = NULL, sort_order = 0
+			WHERE product.product_group_id IS NOT NULL
+			  AND NOT EXISTS (
+				SELECT 1
+				FROM product_groups AS product_group
+				WHERE product_group.id = product.product_group_id
+				  AND product_group.deleted_at IS NULL
+				  AND product_group.catalog_cardcode = product.catalog_cardcode
+			  )
+		`).Error; err != nil {
+			return err
+		}
+
+		return tx.Exec(`
+			CREATE UNIQUE INDEX IF NOT EXISTS idx_product_groups_catalog_name_active
+			ON product_groups (catalog_cardcode, LOWER(BTRIM(name)))
+			WHERE deleted_at IS NULL
+		`).Error
+	})
 }
 
 func migrateProductLifecycle() error {

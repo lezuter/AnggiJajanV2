@@ -1031,6 +1031,17 @@ func CheckManualOrderProviderStatus(c *fiber.Ctx) error {
 // Flow: customer checkout via website + Tripay
 // ==========================================
 func storefrontProductAvailabilityError(product models.Product) string {
+	if product.ProductGroupID != nil {
+		if product.ProductGroup == nil || product.ProductGroup.ID == 0 {
+			return "Kelompok produk tidak tersedia."
+		}
+		if !product.ProductGroup.IsActive {
+			return "Kelompok produk sedang dinonaktifkan oleh admin."
+		}
+		if product.ProductGroup.CatalogCardCode != product.CatalogCardCode {
+			return "Kelompok produk tidak sesuai dengan katalog."
+		}
+	}
 	if !product.AdminEnabled {
 		return "Produk sedang dinonaktifkan oleh admin."
 	}
@@ -1051,7 +1062,7 @@ func Checkout(c *fiber.Ctx) error {
 	}
 
 	var p models.Product
-	if err := database.DB.First(&p, req.ProductID).Error; err != nil {
+	if err := database.DB.Preload("ProductGroup").First(&p, req.ProductID).Error; err != nil {
 		return c.Status(404).JSON(fiber.Map{"error": "Produk ga ada"})
 	}
 

@@ -11,7 +11,8 @@ import CheckoutStepper from '@/components/game-purchase/CheckoutStepper'
 import GamePurchaseHero from '@/components/game-purchase/GamePurchaseHero'
 import OrderSummary from '@/components/game-purchase/OrderSummary'
 import ProductSelector, {
-  type PurchaseProduct
+  type PurchaseProduct,
+  type PurchaseProductSection
 } from '@/components/game-purchase/ProductSelector'
 import CyberneticGridShader from '@/components/ui/cybernetic-grid-shader'
 import { findPublicCatalog, PublicCatalog } from '@/data/publicCatalogs'
@@ -19,7 +20,7 @@ import { getProductSellingPrice } from '@/lib/pricing'
 
 type Product = PurchaseProduct
 
-interface Catalog {
+interface CatalogMetadata {
   ID?: number
   name: string
   slug: string
@@ -33,7 +34,24 @@ interface Catalog {
   description?: string
   accent?: string
   shortName?: string
-  products: Product[]
+}
+
+interface ProductGroup {
+  ID: number
+  name: string
+  catalog_cardcode: string
+  sort_order?: number
+  is_active?: boolean
+  products?: Product[]
+}
+
+interface CatalogResponse extends CatalogMetadata {
+  products?: Product[]
+  product_groups?: ProductGroup[]
+}
+
+interface Catalog extends CatalogMetadata {
+  productSections: PurchaseProductSection[]
 }
 
 interface CheckoutData {
@@ -58,7 +76,7 @@ const toPreviewCatalog = (catalog: PublicCatalog): Catalog => ({
   description: catalog.description,
   accent: catalog.accent,
   shortName: catalog.shortName,
-  products: []
+  productSections: []
 })
 
 const normalizeProducts = (
@@ -66,8 +84,9 @@ const normalizeProducts = (
   checkIdCode?: string
 ) => {
   const normalizedCheckCode = checkIdCode?.trim().toLowerCase()
+  const safeProducts = Array.isArray(products) ? products : []
 
-  return [...products]
+  return [...safeProducts]
     .filter(product => {
       const name = product.name.trim().toLowerCase()
       const code = product.code.trim().toLowerCase()
@@ -93,6 +112,13 @@ const normalizeProducts = (
       )
     })
     .sort((a, b) => {
+      const sortOrderDifference =
+        (a.sort_order ?? 0) - (b.sort_order ?? 0)
+
+      if (sortOrderDifference !== 0) {
+        return sortOrderDifference
+      }
+
       const priceDifference =
         getProductSellingPrice(a) - getProductSellingPrice(b)
 
@@ -102,6 +128,62 @@ const normalizeProducts = (
 
       return a.name.localeCompare(b.name)
     })
+}
+
+const buildProductSections = (
+  groups: ProductGroup[] = [],
+  ungroupedProducts: Product[] = [],
+  checkIdCode?: string
+): PurchaseProductSection[] => {
+  const safeGroups = Array.isArray(groups) ? groups : []
+  const nestedProductIds = new Set<number>()
+
+  safeGroups.forEach(group => {
+    if (!Array.isArray(group.products)) return
+
+    group.products.forEach(product => {
+      if (typeof product?.ID === 'number') {
+        nestedProductIds.add(product.ID)
+      }
+    })
+  })
+
+  const sections = [...safeGroups]
+    .filter(group => group.is_active !== false)
+    .sort((a, b) => {
+      const sortOrderDifference =
+        (a.sort_order ?? 0) - (b.sort_order ?? 0)
+
+      if (sortOrderDifference !== 0) {
+        return sortOrderDifference
+      }
+
+      const nameDifference = a.name.localeCompare(b.name)
+      return nameDifference !== 0 ? nameDifference : a.ID - b.ID
+    })
+    .map(group => ({
+      key: `group-${group.ID}`,
+      title: group.name.trim() || 'Produk',
+      products: normalizeProducts(group.products, checkIdCode)
+    }))
+
+  const normalizedUngroupedProducts = normalizeProducts(
+    Array.isArray(ungroupedProducts) ? ungroupedProducts : [],
+    checkIdCode
+  ).filter(
+    product =>
+      product.product_group_id == null && !nestedProductIds.has(product.ID)
+  )
+
+  if (normalizedUngroupedProducts.length > 0) {
+    sections.push({
+      key: 'ungrouped',
+      title: 'Belum dikelompokkan',
+      products: normalizedUngroupedProducts
+    })
+  }
+
+  return sections
 }
 
 const formatIDR = (value?: number) =>
@@ -180,8 +262,9 @@ export default function GameDetailClient ({ slug }: { slug: string }) {
           throw new Error('Katalog game belum bisa dimuat.')
         }
 
-        const data = (await res.json()) as Catalog
-        const products = normalizeProducts(
+        const data = (await res.json()) as CatalogResponse
+        const productSections = buildProductSections(
+          data.product_groups,
           data.products,
           data.check_id_code
         )
@@ -205,7 +288,7 @@ export default function GameDetailClient ({ slug }: { slug: string }) {
             data.shortName?.trim() ||
             previewCatalog?.shortName,
           check_id_code: data.check_id_code,
-          products
+          productSections
         })
       } catch (error) {
         if (!previewCatalog) {
@@ -459,7 +542,7 @@ export default function GameDetailClient ({ slug }: { slug: string }) {
               />
 
               <ProductSelector
-                products={game.products}
+                sections={game.productSections}
                 selectedProduct={selectedProduct}
                 isAccountComplete={hasAccountData}
                 accountWarning={accountWarning}

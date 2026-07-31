@@ -39,25 +39,41 @@ type Catalog struct {
 	UpdatedAt   time.Time      `json:"updated_at"`
 	DeletedAt   gorm.DeletedAt `gorm:"index" json:"-"`
 
-	Products []Product `gorm:"foreignKey:CatalogCardCode;constraint:OnUpdate:CASCADE,OnDelete:SET NULL;" json:"products"`
+	ProductGroups []ProductGroup `gorm:"foreignKey:CatalogCardCode;references:CardCode;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"product_groups"`
+	Products      []Product      `gorm:"foreignKey:CatalogCardCode;constraint:OnUpdate:CASCADE,OnDelete:SET NULL;" json:"products"`
+}
+
+// ProductGroup is an admin-managed section inside a catalog. Provider syncs
+// must never decide or overwrite this relationship.
+type ProductGroup struct {
+	gorm.Model
+	Name            string    `json:"name" gorm:"size:100;not null;check:chk_product_group_name_nonempty,char_length(btrim(name)) > 0"`
+	CatalogCardCode string    `json:"catalog_cardcode" gorm:"column:catalog_cardcode;size:20;not null;index"`
+	Catalog         Catalog   `json:"-" gorm:"foreignKey:CatalogCardCode;references:CardCode;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
+	SortOrder       int       `json:"sort_order" gorm:"not null;default:0;index;check:chk_product_group_sort_order_nonnegative,sort_order >= 0"`
+	IsActive        bool      `json:"is_active" gorm:"not null;default:true;index"`
+	Products        []Product `json:"products" gorm:"foreignKey:ProductGroupID;constraint:OnUpdate:CASCADE,OnDelete:SET NULL;"`
 }
 
 // Product Model
 type Product struct {
 	gorm.Model
-	Name            string   `json:"name"`
-	Code            string   `gorm:"uniqueIndex" json:"code"`
-	Price           float64  `json:"price"`
-	SellingPrice    float64  `json:"selling_price" gorm:"-"`
-	OriginalPrice   *float64 `json:"original_price" gorm:"column:original_price"`
-	Stock           int      `json:"stock" gorm:"default:0"`
-	IsActive        bool     `json:"is_active" gorm:"default:true;index"` // Status ketersediaan dari provider.
-	AdminEnabled    bool     `json:"admin_enabled" gorm:"default:true;index"`
-	IsArchived      bool     `json:"is_archived" gorm:"default:false;index"` // Kolom kompatibilitas; tidak digunakan oleh workflow admin.
-	ImageURL        string   `json:"image_url"`
-	CatalogCardCode string   `json:"catalog_cardcode" gorm:"column:catalog_cardcode;index"`
-	Catalog         Catalog  `gorm:"foreignKey:CatalogCardCode;references:CardCode" json:"catalog"`
-	Provider        string   `json:"provider" gorm:"default:'digiflazz';index"`
+	Name            string        `json:"name"`
+	Code            string        `gorm:"uniqueIndex" json:"code"`
+	Price           float64       `json:"price"`
+	SellingPrice    float64       `json:"selling_price" gorm:"-"`
+	OriginalPrice   *float64      `json:"original_price" gorm:"column:original_price"`
+	Stock           int           `json:"stock" gorm:"default:0"`
+	IsActive        bool          `json:"is_active" gorm:"default:true;index"` // Status ketersediaan dari provider.
+	AdminEnabled    bool          `json:"admin_enabled" gorm:"default:true;index"`
+	IsArchived      bool          `json:"is_archived" gorm:"default:false;index"` // Kolom kompatibilitas; tidak digunakan oleh workflow admin.
+	ImageURL        string        `json:"image_url"`
+	CatalogCardCode string        `json:"catalog_cardcode" gorm:"column:catalog_cardcode;index"`
+	Catalog         Catalog       `gorm:"foreignKey:CatalogCardCode;references:CardCode" json:"catalog"`
+	ProductGroupID  *uint         `json:"product_group_id" gorm:"index"`
+	ProductGroup    *ProductGroup `json:"product_group,omitempty" gorm:"foreignKey:ProductGroupID;constraint:OnUpdate:CASCADE,OnDelete:SET NULL;"`
+	SortOrder       int           `json:"sort_order" gorm:"not null;default:0;index;check:chk_product_sort_order_nonnegative,sort_order >= 0"`
+	Provider        string        `json:"provider" gorm:"default:'digiflazz';index"`
 }
 
 const StorefrontMarkupRate = 0.05

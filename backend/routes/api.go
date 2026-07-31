@@ -41,6 +41,15 @@ func SetupRoutes(app *fiber.App) {
 	admin.Put("/catalogs/:id", controllers.UpdateCatalog)
 	admin.Delete("/catalogs/:id", controllers.DeleteCatalog)
 	admin.Get("/catalogs", controllers.GetAdminCatalogs)
+	admin.Get("/catalogs/:cardcode/product-groups", controllers.GetProductGroups)
+	admin.Post("/catalogs/:cardcode/product-groups", controllers.CreateProductGroup)
+
+	// PRODUCT GROUP
+	admin.Post("/product-groups/unassign-products", controllers.UnassignProductsFromGroups)
+	admin.Patch("/product-groups/:id", controllers.UpdateProductGroup)
+	admin.Delete("/product-groups/:id", controllers.DeleteProductGroup)
+	admin.Post("/product-groups/:id/products", controllers.AssignProductsToGroup)
+	admin.Delete("/product-groups/:id/products/:productId", controllers.RemoveProductFromGroup)
 
 	// PRODUCT
 	admin.Post("/products/sync/:provider", controllers.SyncAllProducts)

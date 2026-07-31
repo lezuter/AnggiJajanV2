@@ -6,6 +6,7 @@ import (
 	"github.com/derry/anggijajan-v2-backend/database"
 	"github.com/derry/anggijajan-v2-backend/models"
 	"github.com/gofiber/fiber/v2"
+	"gorm.io/gorm"
 )
 
 // --- 1. GET ALL CATALOGS (ADMIN) ---
@@ -37,13 +38,21 @@ func GetCatalogBySlug(c *fiber.Ctx) error {
 	var catalog models.Catalog
 
 	if err := database.DB.
-		Preload(
-			"Products",
-			"is_active = ? AND admin_enabled = ? AND stock <> ?",
-			true,
-			true,
-			0,
-		).
+		Preload("Products", func(db *gorm.DB) *gorm.DB {
+			return db.
+				Where("product_group_id IS NULL AND is_active = ? AND admin_enabled = ? AND stock <> ?", true, true, 0).
+				Order("sort_order ASC, price ASC, name ASC, id ASC")
+		}).
+		Preload("ProductGroups", func(db *gorm.DB) *gorm.DB {
+			return db.
+				Where("is_active = ?", true).
+				Order("sort_order ASC, name ASC, id ASC")
+		}).
+		Preload("ProductGroups.Products", func(db *gorm.DB) *gorm.DB {
+			return db.
+				Where("is_active = ? AND admin_enabled = ? AND stock <> ?", true, true, 0).
+				Order("sort_order ASC, price ASC, name ASC, id ASC")
+		}).
 		Where(
 			"slug = ? AND is_active = ? AND is_public = ?",
 			slug,
