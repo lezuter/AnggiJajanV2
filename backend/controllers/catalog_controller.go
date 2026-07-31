@@ -15,22 +15,45 @@ func GetAdminCatalogs(c *fiber.Ctx) error {
 	return c.JSON(catalogs)
 }
 
-// --- 2. GET PUBLIC CATALOGS (Yg Aktif Aja) ---
+// --- 2. GET PUBLIC CATALOGS ---
 func GetCatalogs(c *fiber.Ctx) error {
 	var catalogs []models.Catalog
-	// Cuma ambil yang IsActive = true
-	database.DB.Where("is_active = ?", true).Order("name asc").Find(&catalogs)
+
+	if err := database.DB.
+		Where("is_active = ? AND is_public = ?", true, true).
+		Order("sort_order ASC, name ASC").
+		Find(&catalogs).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Gagal mengambil katalog publik",
+		})
+	}
+
 	return c.JSON(catalogs)
 }
 
-// --- 3. GET CATALOG BY SLUG (Detail) ---
+// --- 3. GET PUBLIC CATALOG BY SLUG ---
 func GetCatalogBySlug(c *fiber.Ctx) error {
 	slug := c.Params("slug")
 	var catalog models.Catalog
 
-	// Preload Products biar sekalian dapet list produknya
-	if err := database.DB.Preload("Products", "is_active = ?", true).Where("slug = ? AND is_active = ?", slug, true).First(&catalog).Error; err != nil {
-		return c.Status(404).JSON(fiber.Map{"error": "Catalog not found"})
+	if err := database.DB.
+		Preload(
+			"Products",
+			"is_active = ? AND admin_enabled = ? AND stock <> ?",
+			true,
+			true,
+			0,
+		).
+		Where(
+			"slug = ? AND is_active = ? AND is_public = ?",
+			slug,
+			true,
+			true,
+		).
+		First(&catalog).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"error": "Catalog not found",
+		})
 	}
 
 	return c.JSON(catalog)
@@ -74,14 +97,26 @@ func UpdateCatalog(c *fiber.Ctx) error {
 
 	// Update Field
 	catalog.Name = input.Name
+	catalog.Slug = input.Slug
+	catalog.ShortName = input.ShortName
+	catalog.Category = input.Category
+	catalog.Publisher = input.Publisher
+	catalog.Region = input.Region
+	catalog.Description = input.Description
 	catalog.ImageURL = input.ImageURL
-
-	// 👇 INI YANG PENTING BOS! (Biar kesimpen)
+	catalog.BannerURL = input.BannerURL
 	catalog.CheckIDCode = input.CheckIDCode
-	catalog.IsActive = input.IsActive // Biar statusnya ngikut input
+	catalog.IsActive = input.IsActive
+	catalog.IsPublic = input.IsPublic
+	catalog.IsPopular = input.IsPopular
+	catalog.SortOrder = input.SortOrder
 
 	// Save changes
-	database.DB.Save(&catalog)
+	if err := database.DB.Save(&catalog).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": err.Error(),
+		})
+	}
 
 	return c.JSON(catalog)
 }

@@ -32,3 +32,28 @@ backend/*.exe
 tree.txt
 tree-clean.txt
 .DS_Store
+
+# ========================
+# LOCAL TOOLS / TEMP FILES
+# ========================
+.agents/
+APPLY.md
+skills-lock.json
+
+structure.txt
+struktur.txt
+**/tree admin.txt
+
+# Codex screenshots
+frontend/.codex-*.png
+
+# TypeScript build cache
+*.tsbuildinfo
+
+# Firebase local cache
+.firebase/
+
+# Editor / OS
+.vscode/
+.idea/
+Thumbs.db

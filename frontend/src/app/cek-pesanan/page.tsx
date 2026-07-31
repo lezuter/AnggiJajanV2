@@ -1,28 +1,141 @@
 "use client";
 
-import { useState } from "react";
-import Navbar from "@/components/Navbar"; // Pastikan path Navbar sesuai
+import { FormEvent, useMemo, useState } from "react";
+import Navbar from "@/components/Navbar";
+
+const API_BASE_URL = (
+  process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api"
+).replace(/\/+$/, "");
+
+interface SearchOrderResult {
+  invoice_id: string;
+  product?: { name?: string };
+  Product?: { name?: string };
+  product_name?: string;
+  target?: string;
+  customer_phone?: string;
+  amount?: number;
+  status?: string;
+  payment_status?: string;
+  fulfillment_status?: string;
+  provider_status?: string;
+  sn?: string;
+  serial_number?: string;
+  error_message?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+const formatIDR = (value?: number) =>
+  new Intl.NumberFormat("id-ID", {
+    style: "currency",
+    currency: "IDR",
+    maximumFractionDigits: 0
+  }).format(value || 0);
+
+const getStatusView = (order: SearchOrderResult | null) => {
+  const payment = (order?.payment_status || order?.status || "").toUpperCase();
+  const fulfillment = (order?.fulfillment_status || "").toUpperCase();
+
+  if (payment === "EXPIRED") {
+    return {
+      label: "Pembayaran Kedaluwarsa",
+      description:
+        "Invoice pembayaran sudah tidak berlaku. Silakan buat pesanan baru jika masih ingin melanjutkan.",
+      className: "border-yellow-400/25 bg-yellow-500/10 text-yellow-100"
+    };
+  }
+
+  if (payment === "FAILED" && fulfillment !== "FAILED") {
+    return {
+      label: "Pembayaran Gagal",
+      description:
+        "Pembayaran tidak berhasil diproses. Silakan buat pesanan baru atau hubungi admin.",
+      className: "border-red-400/25 bg-red-500/10 text-red-100"
+    };
+  }
+
+  if (payment === "UNPAID" && (!fulfillment || fulfillment === "WAITING_PAYMENT")) {
+    return {
+      label: "Menunggu Pembayaran",
+      description:
+        "Pesanan sudah dibuat dan sedang menunggu pembayaran dari customer.",
+      className: "border-yellow-400/25 bg-yellow-500/10 text-yellow-100"
+    };
+  }
+
+  if (payment === "PAID" && fulfillment === "READY") {
+    return {
+      label: "Pembayaran Berhasil, Siap Diproses",
+      description:
+        "Pembayaran sudah diterima dan transaksi sedang menunggu eksekusi sistem.",
+      className: "border-sky-400/25 bg-sky-500/10 text-sky-100"
+    };
+  }
+
+  if (payment === "PAID" && fulfillment === "PROCESSING") {
+    return {
+      label: "Top Up Sedang Diproses",
+      description:
+        "Transaksi sedang diproses oleh provider. Silakan cek lagi beberapa saat.",
+      className: "border-sky-400/25 bg-sky-500/10 text-sky-100"
+    };
+  }
+
+  if (payment === "PAID" && fulfillment === "SUCCESS") {
+    return {
+      label: "Transaksi Berhasil",
+      description: "Top up berhasil diproses.",
+      className: "border-emerald-400/25 bg-emerald-500/10 text-emerald-100"
+    };
+  }
+
+  if (payment === "PAID" && fulfillment === "FAILED") {
+    return {
+      label: "Top Up Gagal",
+      description:
+        "Top up belum berhasil diproses. Hubungi admin dengan nomor invoice ini.",
+      className: "border-red-400/25 bg-red-500/10 text-red-100"
+    };
+  }
+
+  return {
+    label: order?.status || "Status Pesanan",
+    description: "Status pesanan sudah diterima sistem.",
+    className: "border-white/10 bg-white/[0.04] text-slate-100"
+  };
+};
 
 export default function CekPesananPage() {
   const [invoiceId, setInvoiceId] = useState("");
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<any>(null);
+  const [result, setResult] = useState<SearchOrderResult | null>(null);
   const [error, setError] = useState("");
+  const [hasSearched, setHasSearched] = useState(false);
 
-  const handleSearch = async (e: React.FormEvent) => {
+  const statusView = useMemo(() => getStatusView(result), [result]);
+  const productName =
+    result?.product?.name ||
+    result?.Product?.name ||
+    result?.product_name ||
+    "Nama Item";
+  const target = result?.target || result?.customer_phone || "-";
+  const serialNumber = result?.sn || result?.serial_number || "";
+
+  const handleSearch = async (e: FormEvent) => {
     e.preventDefault();
-    if (!invoiceId) return;
+    if (!invoiceId.trim()) return;
 
     setLoading(true);
     setError("");
     setResult(null);
+    setHasSearched(true);
 
     try {
-      // Tembak API Search Order Backend
-      const res = await fetch("http://localhost:3001/api/search-order", {
+      const res = await fetch(`${API_BASE_URL}/search-order`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ invoice_id: invoiceId }), // Sesuaikan key JSON sama backend
+        body: JSON.stringify({ invoice_id: invoiceId.trim() })
       });
 
       const data = await res.json();
@@ -32,113 +145,120 @@ export default function CekPesananPage() {
       }
 
       setResult(data);
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Pesanan belum ditemukan. Periksa invoice lalu coba lagi."
+      );
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-[#0b0e14] text-white">
+    <div className="min-h-screen bg-[#07091f] text-white">
       <Navbar />
 
-      <main className="container mx-auto px-4 py-20 max-w-2xl">
-        <h1 className="text-3xl font-bold text-center mb-8 bg-gradient-to-r from-green-400 to-blue-500 bg-clip-text text-transparent">
-          Lacak Pesanan Kamu
-        </h1>
+      <main className="mx-auto max-w-3xl px-6 pb-20 pt-32">
+        <div className="mb-8 text-center">
+          <p className="text-xs font-bold uppercase tracking-[0.24em] text-sky-300">
+            Cek Pesanan
+          </p>
+          <h1 className="mt-3 text-3xl font-black text-white md:text-5xl">
+            Lacak Status Top Up
+          </h1>
+          <p className="mx-auto mt-4 max-w-xl text-sm leading-7 text-slate-400">
+            Masukkan nomor invoice untuk melihat status pembayaran dan proses
+            top up kamu.
+          </p>
+        </div>
 
-        {/* --- FORM PENCARIAN --- */}
-        <div className="bg-gray-800/50 border border-gray-700 p-6 rounded-2xl shadow-xl backdrop-blur-sm mb-8">
-          <form onSubmit={handleSearch} className="flex gap-4 flex-col sm:flex-row">
+        <div className="rounded-[28px] border border-white/10 bg-white/[0.04] p-5 shadow-2xl backdrop-blur-xl">
+          <form onSubmit={handleSearch} className="flex flex-col gap-3 sm:flex-row">
             <input
               type="text"
-              placeholder="Masukan Nomor Invoice (Contoh: INV-123456)"
-              className="flex-1 bg-gray-900 border border-gray-600 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-green-500 transition-all"
+              placeholder="Contoh: INV-123456"
+              className="flex-1 rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none transition placeholder:text-slate-500 focus:border-sky-400/50"
               value={invoiceId}
-              onChange={(e) => setInvoiceId(e.target.value)}
+              onChange={e => setInvoiceId(e.target.value)}
             />
             <button
               type="submit"
-              disabled={loading}
-              className="bg-green-600 hover:bg-green-500 text-white font-bold py-3 px-8 rounded-xl transition-all disabled:opacity-50"
+              disabled={loading || !invoiceId.trim()}
+              className="rounded-2xl border border-sky-400/30 bg-sky-500/20 px-6 py-3 text-sm font-black text-sky-100 transition hover:bg-sky-500/30 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {loading ? "Mencari..." : "Cek Status"}
             </button>
           </form>
         </div>
 
-        {/* --- HASIL PENCARIAN (ERROR) --- */}
         {error && (
-          <div className="bg-red-500/10 border border-red-500/50 text-red-400 p-4 rounded-xl text-center animate-in fade-in slide-in-from-bottom-4">
-            ❌ {error}
+          <div className="mt-6 rounded-3xl border border-red-400/25 bg-red-500/10 p-5 text-center text-sm font-bold text-red-100">
+            {error}
           </div>
         )}
 
-        {/* --- HASIL PENCARIAN (SUKSES) --- */}
+        {!loading && !error && hasSearched && !result && (
+          <div className="mt-6 rounded-3xl border border-white/10 bg-white/[0.04] p-8 text-center text-sm text-slate-400">
+            Belum ada hasil. Pastikan invoice yang kamu masukkan sudah benar.
+          </div>
+        )}
+
         {result && (
-          <div className="bg-gray-800 border border-gray-700 rounded-2xl overflow-hidden animate-in fade-in slide-in-from-bottom-8">
-            {/* Header Status */}
-            <div className={`p-4 text-center font-bold text-lg tracking-wider ${
-                result.status === "PAID" ? "bg-green-600 text-white" : 
-                result.status === "UNPAID" ? "bg-yellow-600 text-white" : 
-                "bg-red-600 text-white"
-            }`}>
-              {result.status === "PAID" ? "TRANSAKSI BERHASIL" : 
-               result.status === "UNPAID" ? "MENUNGGU PEMBAYARAN" : "TRANSAKSI GAGAL"}
+          <div className="mt-6 overflow-hidden rounded-[28px] border border-white/10 bg-white/[0.04] shadow-2xl">
+            <div className={`border-b p-5 text-center ${statusView.className}`}>
+              <div className="text-lg font-black">{statusView.label}</div>
+              <p className="mx-auto mt-2 max-w-xl text-xs leading-6 opacity-80">
+                {statusView.description}
+              </p>
             </div>
 
-            <div className="p-6 space-y-4">
-                {/* Detail Produk */}
-                <div className="flex justify-between items-center border-b border-gray-700 pb-4">
-                    <div>
-                        <p className="text-gray-400 text-xs uppercase">Item</p>
-                        <p className="font-bold text-lg">{result.Product?.name || "Nama Item"}</p>
-                    </div>
-                    <div className="text-right">
-                         <p className="text-gray-400 text-xs uppercase">Harga</p>
-                         <p className="font-bold text-lg text-green-400">Rp {result.amount.toLocaleString("id-ID")}</p>
-                    </div>
+            <div className="space-y-5 p-6">
+              <div className="flex items-start justify-between gap-4 border-b border-white/10 pb-5">
+                <div>
+                  <p className="text-xs uppercase text-slate-500">Item</p>
+                  <p className="mt-1 text-lg font-black text-white">
+                    {productName}
+                  </p>
                 </div>
-
-                {/* Detail Akun */}
-                <div className="grid grid-cols-2 gap-4">
-                    <div>
-                        <p className="text-gray-400 text-xs uppercase">Invoice</p>
-                        <p className="font-mono text-sm">{result.invoice_id}</p>
-                    </div>
-                    <div>
-                        <p className="text-gray-400 text-xs uppercase">Tujuan / ID</p>
-                        <p className="font-mono text-sm">{result.customer_phone}</p>
-                    </div>
+                <div className="text-right">
+                  <p className="text-xs uppercase text-slate-500">Nominal</p>
+                  <p className="mt-1 font-mono text-lg font-black text-emerald-300">
+                    {formatIDR(result.amount)}
+                  </p>
                 </div>
+              </div>
 
-                {/* AREA SN / BUKTI (Hanya Muncul kalau PAID) */}
-                {result.status === "PAID" && (
-                     <div className="bg-green-900/20 border border-green-500/30 p-4 rounded-xl mt-4">
-                        <p className="text-green-400 text-xs uppercase font-bold mb-1">Kode SN / Bukti Transaksi</p>
-                        <p className="text-white font-mono text-lg break-all select-all">
-                            {result.sn || "Sedang memproses..."}
-                        </p>
-                        <p className="text-gray-500 text-[10px] mt-1">*Simpan kode ini sebagai bukti sah.</p>
-                     </div>
-                )}
-                
-                {/* Tombol Bayar (Hanya Muncul kalau UNPAID) */}
-                {result.status === "UNPAID" && (
-                    <a 
-                        href={result.payment_url} 
-                        target="_blank"
-                        className="block w-full text-center bg-yellow-600 hover:bg-yellow-500 text-white font-bold py-3 rounded-xl mt-4"
-                    >
-                        Lanjut Pembayaran
-                    </a>
-                )}
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <p className="text-xs uppercase text-slate-500">Invoice</p>
+                  <p className="mt-1 break-all font-mono text-sm text-slate-100">
+                    {result.invoice_id}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs uppercase text-slate-500">Tujuan / ID</p>
+                  <p className="mt-1 break-all font-mono text-sm text-slate-100">
+                    {target}
+                  </p>
+                </div>
+              </div>
 
+              {result.payment_status === "PAID" &&
+                result.fulfillment_status === "SUCCESS" && (
+                  <div className="rounded-2xl border border-emerald-400/20 bg-emerald-500/10 p-4">
+                    <p className="text-xs font-bold uppercase text-emerald-300">
+                      Kode SN / Bukti Transaksi
+                    </p>
+                    <p className="mt-2 break-all font-mono text-sm font-black text-white">
+                      {serialNumber || "SN sedang disiapkan sistem."}
+                    </p>
+                  </div>
+                )}
             </div>
           </div>
         )}
-
       </main>
     </div>
   );

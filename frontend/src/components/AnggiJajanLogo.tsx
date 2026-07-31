@@ -57,7 +57,7 @@ export default function AnggiJajanLogo({ className, variant = "full" }: LogoProp
       xmlns="http://www.w3.org/2000/svg"
     >
         <g>
-            [cite_start]{/* Bagian STROKE (Garis Luar) [cite: 1, 2] */}
+            {/* Bagian STROKE (Garis Luar) [cite: 1, 2] */}
             <circle cx="2791.7" cy="979.54" r="496.94" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="103.67px"/>
             <path d="M1631.77,979.54c0,274.44-222.5,496.94-496.94,496.94S637.92,1254,637.92,979.54s222.47-496.95,496.91-496.95S1631.77,705.09,1631.77,979.54Z" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="103.67px"/>
             <path d="M2619.24,1648.23H1108c-369.31,0-668.66-299.42-668.66-668.69S738.7,310.84,1108,310.84h44.42" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="103.67px"/>
@@ -72,7 +72,7 @@ export default function AnggiJajanLogo({ className, variant = "full" }: LogoProp
             <path d="M832.52,143.37a91.55,91.55,0,0,1,91.54-91.54h419.3c6.09,0,38.52.61,64.72,26.81a91.24,91.24,0,0,1,26.81,64.73" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="103.67px"/>
             <path d="M2397.11,143.37a91.54,91.54,0,0,1,91.54-91.54H2908c6.09,0,38.52.61,64.72,26.81a91.24,91.24,0,0,1,26.81,64.73" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="103.67px"/>
 
-            [cite_start]{/* Bagian FILL (Isian Warna) [cite: 3] */}
+            {/* Bagian FILL (Isian Warna) [cite: 3] */}
             <circle cx="2794.55" cy="737.12" r="120.22" fill="currentColor" stroke="currentColor" strokeMiterlimit="10" strokeWidth="1.28px"/>
             <circle cx="2517.33" cy="984.84" r="120.22" fill="currentColor" stroke="currentColor" strokeMiterlimit="10" strokeWidth="1.28px"/>
             <circle cx="2794.55" cy="1237.26" r="120.22" fill="currentColor" stroke="currentColor" strokeMiterlimit="10" strokeWidth="1.28px"/>
@@ -83,7 +83,7 @@ export default function AnggiJajanLogo({ className, variant = "full" }: LogoProp
             <path d="M994.79,874.32H871.38A38.76,38.76,0,0,0,832.52,913v131a38.75,38.75,0,0,0,38.86,38.64H995a15.63,15.63,0,0,0,10.78-4.3l70.57-67.21a42.37,42.37,0,0,0,.8-60.68l-71.32-71.56A15.66,15.66,0,0,0,994.79,874.32Z" fill="currentColor" stroke="currentColor" strokeMiterlimit="10" strokeWidth="1.28px"/>
         </g>
         
-        [cite_start]{/* TEXT: ANGGIJAJAN (Pake CSS .logo-fill-text) [cite: 4] */}
+        {/* TEXT: ANGGIJAJAN (Pake CSS .logo-fill-text) [cite: 4] */}
         <g fill="currentColor" stroke="none">
             <path d="M5065.41,850.37l317.76,708.38a22.47,22.47,0,0,1-20.5,31.66H5159a22.47,22.47,0,0,1-20.5-13.28l-67.73-151a22.47,22.47,0,0,0-20.5-13.27H4742.55a22.47,22.47,0,0,0-20.5,13.27l-67.73,151a22.47,22.47,0,0,1-20.5,13.28H4430.17a22.47,22.47,0,0,1-20.5-31.66l317.76-708.38a22.47,22.47,0,0,1,20.5-13.27h297A22.47,22.47,0,0,1,5065.41,850.37Zm-96.5,347.89-51.57-115.39c-7.9-17.69-33-17.74-41-.09l-52.21,115.39a22.46,22.46,0,0,0,20.47,31.72H4948.4A22.46,22.46,0,0,0,4968.91,1198.26Z"/>
             <path d="M5726.92,846.43l296.95,412c12.75,17.69,40.69,8.67,40.69-13.13V859.57A22.47,22.47,0,0,1,6087,837.1h191.82a22.46,22.46,0,0,1,22.46,22.47v708.37a22.46,22.46,0,0,1-22.46,22.47H6054.54a22.51,22.51,0,0,1-18.23-9.33l-297-412c-12.75-17.69-40.69-8.67-40.69,13.14v385.75a22.47,22.47,0,0,1-22.46,22.47H5484.38a22.47,22.47,0,0,1-22.46-22.47V859.57a22.47,22.47,0,0,1,22.46-22.47H5708.7A22.45,22.45,0,0,1,5726.92,846.43Z"/>

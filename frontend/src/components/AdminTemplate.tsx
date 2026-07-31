@@ -1,138 +1,112 @@
-'use client'
+"use client";
 
-import { useState, useEffect, useRef } from 'react' // Tambah useRef
-import { usePathname } from 'next/navigation'
-import AdminSidebar from './AdminSidebar'
+import { useState, useEffect, createContext, useContext } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import AdminSidebar from "./AdminSidebar";
+import NotificationBell from "./NotificationBell";
 
-export default function AdminTemplate ({
-  children
+// 🔥 1. BIKIN CONTEXT BUAT NGE-TRACK STATUS DRAWER
+interface DrawerContextType {
+  isDrawerOpen: boolean;
+  setIsDrawerOpen: (val: boolean) => void;
+}
+
+const DrawerContext = createContext<DrawerContextType>({
+  isDrawerOpen: false,
+  setIsDrawerOpen: () => {},
+});
+
+export const useDrawer = () => useContext(DrawerContext);
+
+const normalizePath = (value: string | null) => {
+  if (!value) return "";
+  if (value === "/") return value;
+  return value.replace(/\/+$/, "");
+};
+
+export default function AdminTemplate({
+  children,
 }: {
-  children: React.ReactNode
+  children: React.ReactNode;
 }) {
-  const pathname = usePathname()
-  const [isCollapsed, setIsCollapsed] = useState(false)
-  const [isScrolled, setIsScrolled] = useState(false)
-  const scrollRef = useRef<HTMLDivElement>(null)
+  const pathname = usePathname();
+  const router = useRouter();
+  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isChecking, setIsChecking] = useState(true);
+
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
   useEffect(() => {
-    const handleScroll = () => {
-      if (scrollRef.current) {
-        // Threshold 10px biar langsung kerasa efek blurnya pas scroll dikit
-        setIsScrolled(scrollRef.current.scrollTop > 10)
-      }
+    const currentPath = normalizePath(pathname);
+    const token = localStorage.getItem("token");
+    if (!token && currentPath !== "/admin/login") {
+      router.replace("/admin/login/");
+    } else {
+      // Auth gate resolves only after client-side localStorage is available.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setIsChecking(false);
     }
-    const currentContainer = scrollRef.current
-    currentContainer?.addEventListener('scroll', handleScroll)
-    return () => currentContainer?.removeEventListener('scroll', handleScroll)
-  }, [])
+  }, [router, pathname]);
 
-  if (pathname === '/admin/login') {
-    return <>{children}</>
+  if (normalizePath(pathname) === "/admin/login") return <>{children}</>;
+  if (isChecking) {
+    return (
+      <div className="h-screen w-full bg-[#15173d] text-white flex items-center justify-center">
+        <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-5 py-4 text-xs font-bold uppercase tracking-[0.2em] text-slate-300">
+          Memuat area admin...
+        </div>
+      </div>
+    );
   }
 
   return (
-    <div className='flex h-screen w-full bg-black text-white font-sans overflow-hidden'>
-      <AdminSidebar
-        isCollapsed={isCollapsed}
-        toggleSidebar={() => setIsCollapsed(!isCollapsed)}
-      />
+    <DrawerContext.Provider value={{ isDrawerOpen, setIsDrawerOpen }}>
+      <div className="relative h-screen w-full bg-[#15173d] text-white selection:bg-[#E491C9] selection:text-[#15173d] font-sans">
+        {/* ── HIGH-SPEC LIQUID CANVAS ── */}
+        <style>{`
+          @-webkit-keyframes liquidAurora { 0% { background-position: 0% 50%, 100% 50%, 50% 100%, 0% 0%; } 25% { background-position: 100% 30%, 0% 70%, 20% 40%, 80% 90%; } 50% { background-position: 50% 100%, 100% 0%, 80% 20%, 10% 60%; } 75% { background-position: 0% 40%, 30% 100%, 10% 80%, 100% 20%; } 100% { background-position: 0% 50%, 100% 50%, 50% 100%, 0% 0%; } }
+          @keyframes liquidAurora { 0% { background-position: 0% 50%, 100% 50%, 50% 100%, 0% 0%; } 25% { background-position: 100% 30%, 0% 70%, 20% 40%, 80% 90%; } 50% { background-position: 50% 100%, 100% 0%, 80% 20%, 10% 60%; } 75% { background-position: 0% 40%, 30% 100%, 10% 80%, 100% 20%; } 100% { background-position: 0% 50%, 100% 50%, 50% 100%, 0% 0%; } }
+          .animate-liquid-berry-canvas { background-image: radial-gradient(at 0% 0%, rgba(21, 23, 61, 0.85) 0px, transparent 55%), radial-gradient(at 100% 0%, rgba(152, 37, 152, 0.6) 0px, transparent 50%), radial-gradient(at 100% 100%, rgba(228, 145, 201, 0.55) 0px, transparent 50%), radial-gradient(at 0% 100%, rgba(241, 233, 233, 0.35) 0px, transparent 55%), radial-gradient(at 50% 50%, rgba(152, 37, 152, 0.45) 0px, transparent 60%); background-size: 200% 200%; animation: liquidAurora 24s infinite ease-in-out; }
+          .glass-shell { position: relative; background: rgba(255,255,255,.015); box-shadow: 0 40px 100px -10px rgba(0,0,0,.5), inset 0 0 0 1px rgba(255,255,255,.08); }
+          .glass-shell::before { content: ''; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(135deg, rgba(255,255,255,.08) 0%, rgba(255,255,255,.01) 10%, transparent 25%); border-radius: inherit; }
+          .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+          .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,.15); border-radius: 999px; }
+          .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        `}</style>
 
-      <div
-        className={`flex-1 flex flex-col h-full transition-all duration-300 ${
-          isCollapsed ? 'ml-20' : 'ml-[255px]'
-        }`}
-      >
-        {/* --- AREA SCROLLABLE (Kunci utamanya di ref={scrollRef}) --- */}
-        <div
-          ref={scrollRef}
-          className='flex-1 relative overflow-y-auto custom-scrollbar'
-        >
-          {/* BACKGROUND: Taruh di paling atas sebagai sibling Header & Main */}
-          <div className='absolute inset-0 -z-10 overflow-hidden pointer-events-none'>
+        <div className="absolute inset-0 bg-[#15173d] z-0"></div>
+        <div className="absolute inset-0 w-full h-full z-1 animate-liquid-berry-canvas blur-[45px] scale-105 pointer-events-none"></div>
+        <div className="absolute inset-0 bg-gradient-to-t from-[#15173d]/60 via-transparent to-transparent z-2 pointer-events-none"></div>
+
+        <div className="relative z-10 h-full w-full p-6 sm:p-8">
+          <div className="glass-shell relative h-full w-full rounded-[36px] overflow-hidden">
+            {/* 🔥 KAPSUL BLUR: Sidebar & Halaman dibungkus di sini biar blurnya SAMA RATA 🔥 */}
             <div
-              className='absolute top-0 left-0 w-full'
-              style={{
-                height: '1772px',
-                background:
-                  'linear-gradient(180deg, #18230F 0%, #000000 53.37%)'
-              }}
-            />
+              className={`flex h-full w-full transition-all duration-500 ease-in-out ${isDrawerOpen ? "blur-md brightness-50 pointer-events-none" : "blur-none brightness-100"}`}
+            >
+              <div className="relative z-10 h-full">
+                <AdminSidebar
+                  isCollapsed={isCollapsed}
+                  toggleSidebar={() => setIsCollapsed(!isCollapsed)}
+                />
+              </div>
+
+              <main className="flex-1 relative overflow-y-auto custom-scrollbar p-8 lg:p-10">
+                <div className="absolute top-8 right-10 z-10 flex items-center gap-4">
+                  <NotificationBell />
+                </div>
+                <div className="relative z-10 w-full">{children}</div>
+              </main>
+            </div>
+
+            {/* 🔥 KAMAR DRAWER: Posisinya di luar kapsul blur, jadi dia doang yang tetep tajam */}
             <div
-              className='absolute left-0 w-full bg-no-repeat bg-top'
-              style={{
-                top: '0',
-                height: '1053px',
-                backgroundImage: "url('/green_spike_bg.png')",
-                backgroundSize: '100% auto'
-              }}
-            />
-          </div>
-
-          {/* HEADER: Sticky top-0 biar "Niban" konten & background */}
-          <header
-            className={`h-[65px] sticky top-0 z-50 flex items-center justify-between px-8 transition-all duration-500 border-b-[0.5px] ${
-              isScrolled
-                ? 'bg-black/20 backdrop-blur-md border-[#9EFFBA]/30' // Blur pas di-scroll
-                : 'bg-transparent border-transparent backdrop-blur-none' // Bening total pas di Top
-            }`}
-          >
-            <div className='text-sm text-gray-400 font-mono'>
-              Admin Panel <span className='text-[#9EFFBA]/50'>/</span>
-              <span className='text-[#9EFFBA] font-bold'> products</span>
-            </div>
-
-            <div className='flex items-center gap-4'>
-              {/* Notif Bell Lu */}
-              <button className='relative p-2 rounded-xl text-gray-400 hover:text-[#9EFFBA] transition-all'>
-                <svg
-                  xmlns='http://www.w3.org/2000/svg'
-                  fill='none'
-                  viewBox='0 0 24 24'
-                  strokeWidth='2'
-                  stroke='currentColor'
-                  className='w-6 h-6'
-                >
-                  <path
-                    strokeLinecap='round'
-                    strokeLinejoin='round'
-                    d='M14.857 17.082a23.848 23.848 0 0 0 5.454-1.31A8.967 8.967 0 0 1 18 9.75V9A6 6 0 0 0 6 9v.75a8.967 8.967 0 0 1-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 0 1-5.714 0m5.714 0a3 3 0 1 1-5.714 0'
-                  />
-                </svg>
-                <span className='absolute top-1.5 right-2 flex h-2.5 w-2.5'>
-                  <span className='animate-ping absolute inline-flex h-full w-full rounded-full bg-[#9EFFBA] opacity-75'></span>
-                  <span className='relative inline-flex rounded-full h-2.5 w-2.5 bg-[#9EFFBA] border border-gray-900'></span>
-                </span>
-              </button>
-            </div>
-          </header>
-
-          <div className='min-h-full relative isolate'>
-            {/* BACKGROUND LAYERS */}
-            <div className='absolute inset-0 -z-10 overflow-hidden pointer-events-none'>
-              <div
-                className='absolute top-0 left-0 w-full'
-                style={{
-                  height: '1772px',
-                  background:
-                    'linear-gradient(180deg, #18230F 0%, #000000 53.37%)'
-                }}
-              />
-              <div
-                className='absolute left-0 w-full bg-no-repeat bg-top'
-                style={{
-                  top: '-4px',
-                  height: '1053px',
-                  backgroundImage: "url('/green_spike_bg.png')",
-                  backgroundSize: '100% auto'
-                }}
-              />
-            </div>
-
-            {/* KONTEN UTAMA */}
-            <main className='relative z-10'>{children}</main>
+              id="drawer-root"
+              className="absolute inset-0 z-[100] pointer-events-none"
+            ></div>
           </div>
         </div>
       </div>
-    </div>
-  )
+    </DrawerContext.Provider>
+  );
 }

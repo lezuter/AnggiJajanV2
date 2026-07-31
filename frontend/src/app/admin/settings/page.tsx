@@ -1,216 +1,292 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { useApi } from "@/hooks/useApi"; // 🔥 1. IMPORT SATPAM
+
+interface SettingItem {
+  key: string;
+  value: string;
+}
+
+const isSettingItem = (value: unknown): value is SettingItem => {
+  if (typeof value !== "object" || value === null) return false;
+
+  const item = value as Record<string, unknown>;
+  return typeof item.key === "string" && typeof item.value === "string";
+};
+
+// ✨ PREMIUM GLASSMORPHISM COMPONENT ✨
+const CardBase = ({
+  children,
+  className = "",
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) => (
+  <div
+    className={`relative overflow-hidden bg-gradient-to-br from-white/[0] to-transparent backdrop-blur-[100px] backdrop-saturate-[200%] border border-white/[0.04] shadow-[0_8px_32px_0_rgba(0,0,0,0.15),inset_0_1px_1px_rgba(255,255,255,0.08),inset_0_-1px_1px_rgba(255,255,255,0.02)] rounded-[28px] ${className}`}
+  >
+    <div className="absolute inset-x-0 top-0 h-[1px] bg-gradient-to-r from-transparent via-white/[0.15] to-transparent opacity-40" />
+    <div className="relative z-10">{children}</div>
+  </div>
+);
 
 export default function SettingsPage() {
-    const [loading, setLoading] = useState(true);
-    const [saving, setSaving] = useState(false);
-    
-    // 👇 STATE BARU: Cooldown Sync
-    const [cooldown, setCooldown] = useState(0);
+  // 🔥 2. PANGGIL METHOD DARI USEAPI
+  const { get, put, post } = useApi();
 
-    // State Setting
-    const [formData, setFormData] = useState({
-        margin_percent: "5",
-        flat_fee: "0"
-    });
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
 
-    // 1. Load Settings & Cek Sisa Cooldown pas Halaman Dibuka
-    useEffect(() => {
-        fetchSettings();
-        checkCooldown();
-    }, []);
+  // State Cooldown Sync
+  const [cooldown, setCooldown] = useState(0);
 
-    // 2. Logic Timer Mundur
-    useEffect(() => {
-        if (cooldown > 0) {
-            const timer = setTimeout(() => setCooldown(cooldown - 1), 1000);
-            return () => clearTimeout(timer);
-        }
-    }, [cooldown]);
+  // State Setting
+  const [formData, setFormData] = useState({
+    margin_percent: "5",
+    flat_fee: "0",
+  });
 
-    const checkCooldown = () => {
-        const lastSync = localStorage.getItem("last_sync_timestamp");
-        if (lastSync) {
-            const elapsed = Date.now() - parseInt(lastSync);
-            const remaining = 60000 - elapsed; // 60 Detik Cooldown
-            if (remaining > 0) {
-                setCooldown(Math.ceil(remaining / 1000));
-            }
-        }
-    };
+  // Cek Cooldown
+  const checkCooldown = useCallback(() => {
+    const lastSync = localStorage.getItem("last_sync_timestamp");
+    if (lastSync) {
+      const elapsed = Date.now() - parseInt(lastSync);
+      const remaining = 60000 - elapsed; // 60 Detik Cooldown
+      if (remaining > 0) {
+        setCooldown(Math.ceil(remaining / 1000));
+      }
+    }
+  }, []);
 
-    const getAuthHeaders = () => {
-        const token = localStorage.getItem("token");
-        return {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${token}`
-        };
-    };
+  // 🔥 3. FETCH SETTINGS BERSIH
+  const fetchSettings = useCallback(async () => {
+    try {
+      const res = await get("/admin/settings");
+      if (res.ok) {
+        const data: unknown = await res.json();
 
-    const fetchSettings = async () => {
-        try {
-            const res = await fetch("http://localhost:3001/api/admin/settings", {
-                headers: getAuthHeaders()
-            });
-            const data = await res.json();
-            
-            const newSettings = { ...formData };
-            if (Array.isArray(data)) {
-                data.forEach((item: any) => {
-                    if (item.key === "margin_percent") newSettings.margin_percent = item.value;
-                    if (item.key === "flat_fee") newSettings.flat_fee = item.value;
-                });
-            }
-            setFormData(newSettings);
-        } catch (error) {
-            console.error("Gagal load setting", error);
-        } finally {
-            setLoading(false);
-        }
-    };
+        if (Array.isArray(data)) {
+          setFormData((current) => {
+            const newSettings = { ...current };
 
-    // 🔥 SIMPAN + AUTO SYNC + COOLDOWN
-    const handleSaveAndAutoSync = async (e: React.FormEvent) => {
-        e.preventDefault();
-        
-        if(!formData.margin_percent || !formData.flat_fee) return alert("Isi dulu datanya bos!");
-
-        setSaving(true); 
-
-        try {
-            const headers = getAuthHeaders();
-
-            // 1. SIMPAN PENGATURAN KE DB
-            const resSave = await fetch("http://localhost:3001/api/admin/settings", {
-                method: "PUT",
-                headers: headers,
-                body: JSON.stringify(formData)
+            data.filter(isSettingItem).forEach((item) => {
+              if (item.key === "margin_percent")
+                newSettings.margin_percent = item.value;
+              if (item.key === "flat_fee") newSettings.flat_fee = item.value;
             });
 
-            if (!resSave.ok) throw new Error("Gagal menyimpan setting database");
-
-            // 2. LANGSUNG SYNC PRODUK (AUTO)
-            const resSync = await fetch("http://localhost:3001/api/admin/products/sync", {
-                method: "POST",
-                headers: headers
-            });
-            
-            const dataSync = await resSync.json();
-
-            if (!resSync.ok) throw new Error("Gagal sync harga: " + dataSync.error);
-
-            // 3. SET COOLDOWN (Simpan waktu sekarang ke LocalStorage)
-            localStorage.setItem("last_sync_timestamp", Date.now().toString());
-            setCooldown(60); // Mulai hitung mundur 60 detik
-
-            // 4. LAPORAN SUKSES
-            alert(
-                `✅ BERES BOS!\n\n` +
-                `1. Pengaturan Margin & Fee Disimpan.\n` +
-                `2. Harga ${dataSync.total_processed} Produk Berhasil Diupdate.\n\n` +
-                `Tombol akan dikunci selama 60 detik agar server aman.`
-            );
-
-        } catch (error: any) {
-            console.error(error);
-            alert("❌ Terjadi kesalahan: " + error.message);
-        } finally {
-            setSaving(false);
+            return newSettings;
+          });
         }
-    };
+      }
+    } catch (error) {
+      console.error("Gagal load setting", error);
+    } finally {
+      setLoading(false);
+    }
+  }, [get]);
 
-    return (
-        <div className="p-6 w-full max-w-4xl mx-auto min-h-screen pb-40">
-            <h1 className="text-3xl font-bold text-white mb-2">⚙️ Pengaturan Toko</h1>
-            <p className="text-gray-400 mb-8">Atur keuntungan global dan konfigurasi sistem.</p>
+  // Load Awal
+  useEffect(() => {
+    fetchSettings();
+    checkCooldown();
+  }, [fetchSettings, checkCooldown]);
 
-            {loading ? (
-                <div className="animate-pulse flex gap-4"><div className="h-10 w-full bg-gray-800 rounded"></div></div>
-            ) : (
-                <div className="grid gap-8">
-                    
-                    {/* SETTING KEUNTUNGAN */}
-                    <div className="bg-gray-800 border border-gray-700 rounded-2xl p-6 shadow-xl relative overflow-hidden">
-                        <div className="absolute top-0 right-0 p-4 opacity-10">
-                            <span className="text-9xl">💰</span>
-                        </div>
-                        
-                        <h2 className="text-xl font-bold text-green-400 mb-6 flex items-center gap-2">
-                            <span>💵</span> Margin & Keuntungan
-                        </h2>
+  // Timer Mundur
+  useEffect(() => {
+    if (cooldown > 0) {
+      const timer = setTimeout(() => setCooldown(cooldown - 1), 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [cooldown]);
 
-                        <form onSubmit={handleSaveAndAutoSync} className="space-y-6 relative z-10">
-                            <div className="grid md:grid-cols-2 gap-6">
-                                {/* INPUT PERSEN */}
-                                <div>
-                                    <label className="block text-sm font-bold text-gray-400 mb-2">Margin Persentase (%)</label>
-                                    <div className="relative">
-                                        <input 
-                                            type="number" 
-                                            step="0.1"
-                                            className="w-full bg-gray-900 border border-gray-600 text-white rounded-xl p-4 pr-12 focus:ring-green-500 focus:border-green-500 outline-none text-lg font-mono font-bold"
-                                            value={formData.margin_percent}
-                                            onChange={(e) => setFormData({...formData, margin_percent: e.target.value})}
-                                        />
-                                        <span className="absolute right-4 top-4 text-gray-500 font-bold">%</span>
-                                    </div>
-                                    <p className="text-xs text-gray-500 mt-2">Keuntungan diambil dari persentase harga modal.</p>
-                                </div>
+  // 🔥 4. SAVE & SYNC BERSIH
+  const handleSaveAndAutoSync = async (e: React.FormEvent) => {
+    e.preventDefault();
 
-                                {/* INPUT FLAT FEE */}
-                                <div>
-                                    <label className="block text-sm font-bold text-gray-400 mb-2">Biaya Admin Flat (Rp)</label>
-                                    <div className="relative">
-                                        <span className="absolute left-4 top-4 text-gray-500 font-bold">Rp</span>
-                                        <input 
-                                            type="number" 
-                                            className="w-full bg-gray-900 border border-gray-600 text-white rounded-xl p-4 pl-12 focus:ring-green-500 focus:border-green-500 outline-none text-lg font-mono font-bold"
-                                            value={formData.flat_fee}
-                                            onChange={(e) => setFormData({...formData, flat_fee: e.target.value})}
-                                        />
-                                    </div>
-                                    <p className="text-xs text-gray-500 mt-2">Tambahan biaya tetap per transaksi (Opsional).</p>
-                                </div>
-                            </div>
+    if (!formData.margin_percent || !formData.flat_fee)
+      return alert("Isi dulu datanya bos!");
 
-                            {/* RUMUS PREVIEW */}
-                            <div className="bg-gray-900/50 p-4 rounded-xl border border-gray-700/50 text-sm text-gray-300 font-mono">
-                                <p className="mb-1 text-gray-500 font-bold text-xs uppercase">Simulasi Rumus Harga Jual:</p>
-                                <p>Harga Jual = (Modal + <span className="text-green-400">{formData.margin_percent}%</span>) + Rp <span className="text-green-400">{parseInt(formData.flat_fee || "0").toLocaleString()}</span></p>
-                            </div>
+    setSaving(true);
 
-                            <div className="flex justify-end pt-4 border-t border-gray-700">
-                                {/* 👇 TOMBOL SIMPAN DENGAN COOLDOWN & LOADING */}
-                                <button 
-                                    type="submit" 
-                                    disabled={saving || cooldown > 0}
-                                    className={`
-                                        px-8 py-3 rounded-xl font-bold shadow-lg transition-all flex items-center gap-2
-                                        ${saving || cooldown > 0 
-                                            ? "bg-gray-700 cursor-not-allowed text-gray-400" 
-                                            : "bg-green-600 hover:bg-green-500 hover:scale-105 active:scale-95 text-white shadow-green-500/20"}
-                                    `}
-                                >
-                                    {saving ? (
-                                        <>
-                                            <span className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full"></span>
-                                            Menyimpan...
-                                        </>
-                                    ) : cooldown > 0 ? (
-                                        <>
-                                            <span>⏳</span> Tunggu {cooldown}s...
-                                        </>
-                                    ) : (
-                                        "💾 Simpan & Terapkan Harga"
-                                    )}
-                                </button>
-                            </div>
-                        </form>
-                    </div>
+    try {
+      // 1. SIMPAN PENGATURAN PAKE PUT()
+      const resSave = await put("/admin/settings", formData);
+      if (!resSave.ok) throw new Error("Gagal menyimpan setting database");
 
-                </div>
-            )}
+      // 2. LANGSUNG SYNC PRODUK PAKE POST() (Body kosong {})
+      const resSync = await post("/admin/products/sync", {});
+      const dataSync = await resSync.json();
+
+      if (!resSync.ok)
+        throw new Error(
+          "Gagal sync harga: " + (dataSync.error || "Unknown Error"),
+        );
+
+      // 3. SET COOLDOWN
+      localStorage.setItem("last_sync_timestamp", Date.now().toString());
+      setCooldown(60);
+
+      // 4. LAPORAN SUKSES
+      alert(
+        `✅ BERES BOS!\n\n` +
+          `1. Pengaturan Margin & Fee Disimpan.\n` +
+          `2. Harga ${dataSync.total_processed || "semua"} Produk Berhasil Diupdate.\n\n` +
+          `Tombol akan dikunci selama 60 detik agar server aman.`,
+      );
+    } catch (error: unknown) {
+      console.error(error);
+      const message =
+        error instanceof Error ? error.message : "Kesalahan tidak diketahui";
+      alert("❌ Terjadi kesalahan: " + message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="w-full max-w-[1920px] mx-auto pb-10">
+      {/* HEADER SECTION */}
+      <div className="mb-10 flex flex-col md:flex-row justify-between items-end gap-4">
+        <div>
+          <h1 className="text-3xl font-black text-white flex items-center gap-3 uppercase tracking-tight">
+            <span className="w-2 h-8 bg-gradient-to-b from-emerald-400 to-green-600 rounded-full"></span>
+            System Settings
+          </h1>
+          <p className="text-emerald-300/70 text-sm mt-1 ml-5 tracking-widest uppercase text-[10px] font-bold">
+            Atur keuntungan global & konfigurasi server
+          </p>
         </div>
-    );
+      </div>
+
+      {loading ? (
+        <div className="animate-pulse flex gap-4">
+          <div className="h-32 w-full max-w-4xl bg-white/[0.02] border border-white/[0.05] rounded-[28px]"></div>
+        </div>
+      ) : (
+        <div className="w-full max-w-4xl">
+          {/* SETTING KEUNTUNGAN CARD */}
+          <CardBase className="p-8 group relative overflow-hidden">
+            {/* Background Ornament */}
+            <div className="absolute -top-20 -right-20 text-[200px] opacity-[0.03] group-hover:scale-110 group-hover:-rotate-12 transition-transform duration-700 pointer-events-none">
+              💰
+            </div>
+
+            <h2 className="text-sm font-bold text-white mb-8 border-b border-white/10 pb-4 uppercase tracking-widest flex items-center gap-3">
+              <span className="w-2 h-4 bg-emerald-400 rounded-full shadow-[0_0_10px_rgba(52,211,153,0.5)]"></span>
+              Margin & Keuntungan
+            </h2>
+
+            <form
+              onSubmit={handleSaveAndAutoSync}
+              className="space-y-8 relative z-10"
+            >
+              <div className="grid md:grid-cols-2 gap-8">
+                {/* INPUT PERSEN */}
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 mb-2 uppercase tracking-widest">
+                    Margin Persentase (%)
+                  </label>
+                  <div className="relative group/input">
+                    <input
+                      type="number"
+                      step="0.1"
+                      className="w-full bg-white/[0.02] border border-white/[0.05] text-emerald-400 rounded-xl p-4 pr-12 focus:border-emerald-500/50 focus:bg-white/[0.05] focus:shadow-[0_0_15px_rgba(52,211,153,0.15)] outline-none text-2xl font-mono font-bold transition-all"
+                      value={formData.margin_percent}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          margin_percent: e.target.value,
+                        })
+                      }
+                    />
+                    <span className="absolute right-5 top-1/2 -translate-y-1/2 text-slate-500 font-bold group-focus-within/input:text-emerald-500/50 transition-colors">
+                      %
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-slate-500 mt-2 font-mono">
+                    Keuntungan diambil dari persentase harga modal.
+                  </p>
+                </div>
+
+                {/* INPUT FLAT FEE */}
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 mb-2 uppercase tracking-widest">
+                    Biaya Admin Flat (Rp)
+                  </label>
+                  <div className="relative group/input">
+                    <span className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-500 font-bold group-focus-within/input:text-emerald-500/50 transition-colors">
+                      Rp
+                    </span>
+                    <input
+                      type="number"
+                      className="w-full bg-white/[0.02] border border-white/[0.05] text-emerald-400 rounded-xl p-4 pl-14 focus:border-emerald-500/50 focus:bg-white/[0.05] focus:shadow-[0_0_15px_rgba(52,211,153,0.15)] outline-none text-2xl font-mono font-bold transition-all"
+                      value={formData.flat_fee}
+                      onChange={(e) =>
+                        setFormData({ ...formData, flat_fee: e.target.value })
+                      }
+                    />
+                  </div>
+                  <p className="text-[10px] text-slate-500 mt-2 font-mono">
+                    Tambahan biaya tetap per transaksi (Opsional).
+                  </p>
+                </div>
+              </div>
+
+              {/* RUMUS PREVIEW GLASS */}
+              <div className="bg-sky-500/[0.02] p-5 rounded-xl border border-sky-500/10 shadow-[inset_0_1px_1px_rgba(255,255,255,0.02)]">
+                <p className="mb-2 text-sky-400/80 font-bold text-[10px] uppercase tracking-widest">
+                  Simulasi Rumus Harga Jual Akhir:
+                </p>
+                <div className="text-sm text-slate-300 font-mono tracking-wide">
+                  Harga Jual = (Modal +{" "}
+                  <span className="text-emerald-400 font-bold">
+                    {formData.margin_percent}%
+                  </span>
+                  ) + Rp{" "}
+                  <span className="text-emerald-400 font-bold">
+                    {parseInt(formData.flat_fee || "0").toLocaleString()}
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex justify-end pt-6 border-t border-white/[0.05]">
+                {/* 👇 TOMBOL SIMPAN DENGAN COOLDOWN & LOADING */}
+                <button
+                  type="submit"
+                  disabled={saving || cooldown > 0}
+                  className={`
+                                        px-8 py-3.5 rounded-xl text-xs font-bold uppercase tracking-widest border transition-all duration-300 shadow-[inset_0_1px_2px_rgba(255,255,255,0.2)] flex items-center gap-3
+                                        ${
+                                          saving || cooldown > 0
+                                            ? "bg-white/[0.02] text-slate-500 border-white/[0.05] cursor-not-allowed"
+                                            : "bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border-emerald-500/30 hover:border-emerald-500/50 hover:shadow-[0_0_20px_rgba(52,211,153,0.3)]"
+                                        }
+                                    `}
+                >
+                  {saving ? (
+                    <>
+                      <span className="animate-spin w-4 h-4 border-2 border-emerald-400 border-t-transparent rounded-full"></span>
+                      <span>Processing...</span>
+                    </>
+                  ) : cooldown > 0 ? (
+                    <>
+                      <span className="text-sm">⏳</span>
+                      <span>Cooldown {cooldown}s</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="text-sm">💾</span>
+                      <span>Simpan & Sync Harga</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </CardBase>
+        </div>
+      )}
+    </div>
+  );
 }
