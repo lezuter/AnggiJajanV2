@@ -19,6 +19,7 @@ import {
 // 🔥 1. IMPORT SATPAM 401
 import { useApi } from '@/hooks/useApi'
 import PendingProductsTable from '@/components/PendingProductsTable'
+import { Checkbox } from '@/components/ui/checkbox'
 import { getProductSellingPrice } from '@/lib/pricing'
 
 // ==========================================
@@ -123,40 +124,6 @@ const mainCategories = [
   { id: 'emoney', name: 'E-Money', icon: Wallet },
   { id: 'pln', name: 'Token PLN', icon: Zap },
 ]
-
-function SelectionCheckbox({
-  checked,
-  indeterminate = false,
-  disabled = false,
-  label,
-  onChange
-}: {
-  checked: boolean;
-  indeterminate?: boolean;
-  disabled?: boolean;
-  label: string;
-  onChange: () => void;
-}) {
-  const checkboxRef = useRef<HTMLInputElement>(null)
-
-  useEffect(() => {
-    if (checkboxRef.current) {
-      checkboxRef.current.indeterminate = indeterminate
-    }
-  }, [indeterminate])
-
-  return (
-    <input
-      ref={checkboxRef}
-      type="checkbox"
-      checked={checked}
-      disabled={disabled}
-      aria-label={label}
-      onChange={onChange}
-      className="h-5 w-5 cursor-pointer rounded border-white/20 bg-black/20 accent-[#0084FF] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0084FF]/70 disabled:cursor-not-allowed disabled:opacity-30"
-    />
-  )
-}
 
 function BulkModal({
   title,
@@ -896,11 +863,11 @@ export default function ProductsPage() {
                 <thead>
                   <tr className="border-b border-white/10">
                     <th className="w-[52px] py-4 pl-2">
-                      <SelectionCheckbox
-                        checked={allDisplayedSelected}
-                        indeterminate={someDisplayedSelected}
-                        disabled={displayedProductIDs.length === 0}
-                        label={
+                      <Checkbox
+                        isSelected={allDisplayedSelected}
+                        isIndeterminate={someDisplayedSelected}
+                        isDisabled={displayedProductIDs.length === 0}
+                        aria-label={
                           allDisplayedSelected
                             ? 'Hapus pilihan semua produk yang sedang tampil'
                             : 'Pilih semua produk yang sedang tampil'
@@ -909,10 +876,11 @@ export default function ProductsPage() {
                       />
                     </th>
                     <th className="px-3 text-[11px] font-bold uppercase tracking-widest text-white/40">Product</th>
-                    <th className="w-[19%] px-3 text-[11px] font-bold uppercase tracking-widest text-white/40">Provider / SKU</th>
-                    <th className="w-[16%] px-3 text-right text-[11px] font-bold uppercase tracking-widest text-white/40">Price</th>
-                    <th className="w-[9%] px-2 text-center text-[11px] font-bold uppercase tracking-widest text-white/40">Stock</th>
-                    <th className="w-[18%] px-2 text-center text-[11px] font-bold uppercase tracking-widest text-white/40">Status</th>
+                    <th className="w-[17%] px-3 text-[11px] font-bold uppercase tracking-widest text-white/40">Provider / SKU</th>
+                    <th className="w-[13%] px-3 text-right text-[11px] font-bold uppercase tracking-widest text-white/40">Harga</th>
+                    <th className="w-[12%] px-3 text-right text-[11px] font-bold uppercase tracking-widest text-white/40">Harga Coret</th>
+                    <th className="w-[8%] px-2 text-center text-[11px] font-bold uppercase tracking-widest text-white/40">Stock</th>
+                    <th className="w-[16%] px-2 text-center text-[11px] font-bold uppercase tracking-widest text-white/40">Status</th>
                     <th className="w-[68px] pr-2 text-right text-[11px] font-bold uppercase tracking-widest text-white/40">Action</th>
                   </tr>
                 </thead>
@@ -924,6 +892,7 @@ export default function ProductsPage() {
                         <td className="px-3"><div className="flex items-center gap-3"><div className="h-12 w-12 shrink-0 rounded-2xl bg-white/5" /><div className="min-w-0 flex-1"><div className="mb-2 h-4 w-2/3 rounded bg-white/5" /><div className="h-3 w-1/3 rounded bg-white/5" /></div></div></td>
                         <td className="px-3"><div className="mb-2 h-3 w-1/2 rounded bg-white/5" /><div className="h-3 w-3/4 rounded bg-white/5" /></td>
                         <td className="px-3"><div className="ml-auto mb-2 h-4 w-3/4 rounded bg-white/5" /><div className="ml-auto h-3 w-2/3 rounded bg-white/5" /></td>
+                        <td className="px-3"><div className="ml-auto h-3 w-3/4 rounded bg-white/5" /></td>
                         <td className="px-2"><div className="mx-auto h-4 w-10 rounded bg-white/5" /></td>
                         <td className="px-2"><div className="mx-auto mb-1 h-6 w-24 rounded-xl bg-white/5" /><div className="mx-auto h-6 w-20 rounded-xl bg-white/5" /></td>
                         <td className="pr-2"><div className="ml-auto h-9 w-9 rounded-xl bg-white/5" /></td>
@@ -938,9 +907,9 @@ export default function ProductsPage() {
                       return (
                         <tr key={p.ID} className={`group h-[88px] border-b border-white/5 transition-colors hover:bg-white/[0.035] ${isSelected ? 'bg-[#0084FF]/[0.045]' : ''}`}>
                           <td className="py-4 pl-2">
-                            <SelectionCheckbox
-                              checked={isSelected}
-                              label={`${isSelected ? 'Hapus pilihan' : 'Pilih'} ${p.name}`}
+                            <Checkbox
+                              isSelected={isSelected}
+                              aria-label={`${isSelected ? 'Hapus pilihan' : 'Pilih'} ${p.name}`}
                               onChange={() => toggleProductSelection(p.ID)}
                             />
                           </td>
@@ -960,16 +929,17 @@ export default function ProductsPage() {
                             <p className="mt-1 truncate font-mono text-[11px] font-medium uppercase tracking-wider text-[#0084FF]" title={p.code}>{p.code || '-'}</p>
                           </td>
                           <td className="px-3 text-right">
-                            <p className="text-[9px] uppercase tracking-wider text-white/35">Jual</p>
                             <p className="truncate font-mono text-xs font-bold text-white">Rp {getProductSellingPrice(p).toLocaleString('id-ID')}</p>
-                            {p.original_price !== null &&
-                              p.original_price !== undefined &&
-                              p.original_price > getProductSellingPrice(p) && (
-                                <p className="mt-1 truncate text-[10px] text-white/35 line-through">
-                                  Normal Rp {p.original_price.toLocaleString('id-ID')}
-                                </p>
-                              )}
                             <p className="mt-1 truncate text-[10px] text-white/40">Modal Rp {p.price.toLocaleString()}</p>
+                          </td>
+                          <td className="px-3 text-right">
+                            {p.original_price !== null && p.original_price !== undefined ? (
+                              <p className="truncate font-mono text-[11px] text-white/45 line-through">
+                                Rp {p.original_price.toLocaleString('id-ID')}
+                              </p>
+                            ) : (
+                              <span className="text-xs text-white/20">—</span>
+                            )}
                           </td>
                           <td className="px-2 text-center font-mono text-sm text-white/80">
                             {p.stock === -1 ? '∞' : p.stock === 0 ? <span className="text-red-400 text-xs font-bold bg-red-500/10 px-2 py-1 rounded-md">KOSONG</span> : p.stock}
@@ -1007,7 +977,7 @@ export default function ProductsPage() {
                     })
                   ) : (
                     <tr>
-                      <td colSpan={7} className="py-20 text-center text-white/40 font-mono text-sm">
+                      <td colSpan={8} className="py-20 text-center text-white/40 font-mono text-sm">
                         <AlertTriangle size={40} className="mx-auto mb-4 text-white/20" />
                         Tidak ada produk ditemukan.
                       </td>
@@ -1020,11 +990,11 @@ export default function ProductsPage() {
             <div className="lg:hidden">
               <div className="mb-3 flex items-center justify-between rounded-2xl border border-white/5 bg-black/10 px-4 py-3">
                 <div className="flex items-center gap-3">
-                  <SelectionCheckbox
-                    checked={allDisplayedSelected}
-                    indeterminate={someDisplayedSelected}
-                    disabled={displayedProductIDs.length === 0}
-                    label={allDisplayedSelected ? 'Hapus pilihan semua produk yang sedang tampil' : 'Pilih semua produk yang sedang tampil'}
+                  <Checkbox
+                    isSelected={allDisplayedSelected}
+                    isIndeterminate={someDisplayedSelected}
+                    isDisabled={displayedProductIDs.length === 0}
+                    aria-label={allDisplayedSelected ? 'Hapus pilihan semua produk yang sedang tampil' : 'Pilih semua produk yang sedang tampil'}
                     onChange={toggleAllDisplayedProducts}
                   />
                   <span className="text-xs font-semibold text-white/60">Pilih semua yang tampil</span>
@@ -1055,7 +1025,7 @@ export default function ProductsPage() {
                       <article key={p.ID} className={`group rounded-2xl border p-4 transition-colors ${isSelected ? 'border-[#0084FF]/25 bg-[#0084FF]/[0.045]' : 'border-white/5 bg-white/[0.025]'}`}>
                         <div className="flex items-start gap-3">
                           <div className="pt-3">
-                            <SelectionCheckbox checked={isSelected} label={`${isSelected ? 'Hapus pilihan' : 'Pilih'} ${p.name}`} onChange={() => toggleProductSelection(p.ID)} />
+                            <Checkbox isSelected={isSelected} aria-label={`${isSelected ? 'Hapus pilihan' : 'Pilih'} ${p.name}`} onChange={() => toggleProductSelection(p.ID)} />
                           </div>
                           <ProductTableThumbnail imageUrl={p.image_url} productName={p.name} />
                           <div className="min-w-0 flex-1">
@@ -1075,14 +1045,13 @@ export default function ProductsPage() {
                           </div>
                           <div className="min-w-0 rounded-xl bg-black/10 p-3 text-right">
                             <dt className="text-[9px] uppercase tracking-wider text-white/35">Harga</dt>
-                            <dd className="mt-1 truncate font-mono font-bold text-white">Jual Rp {getProductSellingPrice(p).toLocaleString('id-ID')}</dd>
-                            {p.original_price !== null &&
-                              p.original_price !== undefined &&
-                              p.original_price > getProductSellingPrice(p) && (
-                                <dd className="mt-1 truncate text-[10px] text-white/35 line-through">
-                                  Normal Rp {p.original_price.toLocaleString('id-ID')}
-                                </dd>
-                              )}
+                            <dd className="mt-1 truncate font-mono font-bold text-white">Rp {getProductSellingPrice(p).toLocaleString('id-ID')}</dd>
+                            <dd className="mt-1 truncate text-[10px] text-white/35">
+                              Coret{' '}
+                              {p.original_price !== null && p.original_price !== undefined ? (
+                                <span className="line-through">Rp {p.original_price.toLocaleString('id-ID')}</span>
+                              ) : '—'}
+                            </dd>
                             <dd className="mt-1 truncate text-[10px] text-white/40">Modal Rp {p.price.toLocaleString()}</dd>
                           </div>
                           <div className="rounded-xl bg-black/10 p-3">
@@ -1278,18 +1247,16 @@ export default function ProductsPage() {
                   ? 'border-[#0084FF]/30 bg-[#0084FF]/[0.07]'
                   : 'border-white/10 bg-white/[0.025]'
               }`}>
-                <label className="flex cursor-pointer items-start gap-3">
-                  <input
-                    type="checkbox"
-                    checked={bulkEditForm.applyStatus}
-                    onChange={event =>
-                      setBulkEditForm(current => ({
-                        ...current,
-                        applyStatus: event.target.checked
-                      }))
-                    }
-                    className="mt-0.5 h-4 w-4 accent-[#0084FF]"
-                  />
+                <Checkbox
+                  isSelected={bulkEditForm.applyStatus}
+                  onChange={isSelected =>
+                    setBulkEditForm(current => ({
+                      ...current,
+                      applyStatus: isSelected
+                    }))
+                  }
+                  className="items-start"
+                >
                   <span>
                     <span className="block text-sm font-semibold text-white">
                       Terapkan perubahan status storefront
@@ -1298,7 +1265,7 @@ export default function ProductsPage() {
                       Status provider tetap dikelola otomatis oleh sinkronisasi.
                     </span>
                   </span>
-                </label>
+                </Checkbox>
 
                 <label className="mt-4 block text-xs font-medium text-white/55">
                   Status storefront
@@ -1324,18 +1291,16 @@ export default function ProductsPage() {
                   ? 'border-[#0084FF]/30 bg-[#0084FF]/[0.07]'
                   : 'border-white/10 bg-white/[0.025]'
               }`}>
-                <label className="flex cursor-pointer items-start gap-3">
-                  <input
-                    type="checkbox"
-                    checked={bulkEditForm.applyCatalog}
-                    onChange={event =>
-                      setBulkEditForm(current => ({
-                        ...current,
-                        applyCatalog: event.target.checked
-                      }))
-                    }
-                    className="mt-0.5 h-4 w-4 accent-[#0084FF]"
-                  />
+                <Checkbox
+                  isSelected={bulkEditForm.applyCatalog}
+                  onChange={isSelected =>
+                    setBulkEditForm(current => ({
+                      ...current,
+                      applyCatalog: isSelected
+                    }))
+                  }
+                  className="items-start"
+                >
                   <span>
                     <span className="block text-sm font-semibold text-white">
                       Terapkan perubahan katalog
@@ -1344,7 +1309,7 @@ export default function ProductsPage() {
                       Produk akan dipindahkan memakai cardcode katalog tujuan.
                     </span>
                   </span>
-                </label>
+                </Checkbox>
 
                 <label className="mt-4 block text-xs font-medium text-white/55">
                   Katalog tujuan
@@ -1374,18 +1339,16 @@ export default function ProductsPage() {
                   ? 'border-[#0084FF]/30 bg-[#0084FF]/[0.07]'
                   : 'border-white/10 bg-white/[0.025]'
               }`}>
-                <label className="flex cursor-pointer items-start gap-3">
-                  <input
-                    type="checkbox"
-                    checked={bulkEditForm.applyImage}
-                    onChange={event =>
-                      setBulkEditForm(current => ({
-                        ...current,
-                        applyImage: event.target.checked
-                      }))
-                    }
-                    className="mt-0.5 h-4 w-4 accent-[#0084FF]"
-                  />
+                <Checkbox
+                  isSelected={bulkEditForm.applyImage}
+                  onChange={isSelected =>
+                    setBulkEditForm(current => ({
+                      ...current,
+                      applyImage: isSelected
+                    }))
+                  }
+                  className="items-start"
+                >
                   <span>
                     <span className="block text-sm font-semibold text-white">
                       Terapkan thumbnail yang sama
@@ -1394,7 +1357,7 @@ export default function ProductsPage() {
                       URL ini akan mengganti thumbnail seluruh produk yang dipilih.
                     </span>
                   </span>
-                </label>
+                </Checkbox>
 
                 <label className="mt-4 block text-xs font-medium text-white/55">
                   Thumbnail URL
