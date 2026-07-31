@@ -12,12 +12,23 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"sort"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/derry/anggijajan-v2-backend/database"
 	"github.com/derry/anggijajan-v2-backend/models"
 	"github.com/gofiber/fiber/v2"
 	"gorm.io/gorm"
+)
+
+var (
+	digiflazzSyncMutex sync.Mutex
+
+	// ErrDigiflazzSyncInProgress mencegah cron dan sync manual berjalan
+	// bersamaan terhadap inventory Digiflazz yang sama.
+	ErrDigiflazzSyncInProgress = errors.New("sinkronisasi Digiflazz sedang berjalan")
 )
 
 // 1. GET ALL PRODUCTS
@@ -66,7 +77,15 @@ func SyncAllProducts(c *fiber.Ctx) error {
 	}
 
 	if err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": "Gagal Sync " + provider, "message": err.Error()})
+		status := fiber.StatusInternalServerError
+		if errors.Is(err, ErrDigiflazzSyncInProgress) {
+			status = fiber.StatusConflict
+		}
+
+		return c.Status(status).JSON(fiber.Map{
+			"error":   "Gagal Sync " + provider,
+			"message": err.Error(),
+		})
 	}
 
 	// Nah, di response API ini bakal muncul nama-nama game yang belum lu bikin katalognya!
@@ -79,25 +98,60 @@ func SyncAllProducts(c *fiber.Ctx) error {
 }
 
 // 3. MESIN DIGIFLAZZ (DENGAN RADAR GAME BARU)
-func RunDigiflazzSync() (int, int, []string, error) { // <--- Perhatikan return type-nya berubah
-	username := os.Getenv("DIGIFLAZZ_USERNAME")
-	apiKey := os.Getenv("DIGIFLAZZ_API_KEY")
+func RunDigiflazzSync() (int, int, []string, error) {
+	if !digiflazzSyncMutex.TryLock() {
+		return 0, 0, nil, ErrDigiflazzSyncInProgress
+	}
+	defer digiflazzSyncMutex.Unlock()
+
+	username := strings.TrimSpace(os.Getenv("DIGIFLAZZ_USERNAME"))
+	apiKey := strings.TrimSpace(os.Getenv("DIGIFLAZZ_API_KEY"))
+	if username == "" || apiKey == "" {
+		return 0, 0, nil, fmt.Errorf("credential Digiflazz belum lengkap")
+	}
 
 	signStr := username + apiKey + "depo"
 	hash := md5.Sum([]byte(signStr))
 	signature := hex.EncodeToString(hash[:])
 
-	payload := map[string]interface{}{"cmd": "prepaid", "username": username, "sign": signature}
-	jsonPayload, _ := json.Marshal(payload)
-
-	resp, err := http.Post("https://api.digiflazz.com/v1/price-list", "application/json", bytes.NewBuffer(jsonPayload))
+	payload := map[string]interface{}{
+		"cmd":      "prepaid",
+		"username": username,
+		"sign":     signature,
+	}
+	jsonPayload, err := json.Marshal(payload)
 	if err != nil {
-		return 0, 0, nil, err
+		return 0, 0, nil, fmt.Errorf("gagal membuat payload Digiflazz: %w", err)
+	}
+
+	request, err := http.NewRequest(
+		http.MethodPost,
+		"https://api.digiflazz.com/v1/price-list",
+		bytes.NewBuffer(jsonPayload),
+	)
+	if err != nil {
+		return 0, 0, nil, fmt.Errorf("gagal membuat request Digiflazz: %w", err)
+	}
+	request.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(request)
+	if err != nil {
+		return 0, 0, nil, fmt.Errorf("gagal menghubungi Digiflazz: %w", err)
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return 0, 0, nil, fmt.Errorf(
+			"Digiflazz mengembalikan HTTP %d",
+			resp.StatusCode,
+		)
+	}
+
 	var result map[string]interface{}
-	json.NewDecoder(resp.Body).Decode(&result)
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return 0, 0, nil, fmt.Errorf("response Digiflazz tidak valid: %w", err)
+	}
 
 	data, ok := result["data"].([]interface{})
 	if !ok {
@@ -105,14 +159,17 @@ func RunDigiflazzSync() (int, int, []string, error) { // <--- Perhatikan return 
 	}
 
 	count, activeCount := 0, 0
-	unmappedMap := make(map[string]bool) // Buku catatan buat game yang belum ada rumahnya
+	unmappedMap := make(map[string]bool)
 
 	err = database.DB.Transaction(func(tx *gorm.DB) error {
 		// Produk testing lokal jangan ikut dimatikan oleh sinkronisasi provider.
-		// Selain tetap aktif, stock dibuat unlimited agar frontend tidak menguncinya sebagai KOSONG.
 		if err := tx.Model(&models.Product{}).
 			Where("LOWER(provider) = ?", "digiflazz").
-			Where("(UPPER(COALESCE(name, '')) LIKE ? OR UPPER(COALESCE(code, '')) LIKE ?)", "%TEST%", "%TEST%").
+			Where(
+				"(UPPER(COALESCE(name, '')) LIKE ? OR UPPER(COALESCE(code, '')) LIKE ?)",
+				"%TEST%",
+				"%TEST%",
+			).
 			Updates(map[string]interface{}{
 				"is_active": true,
 				"stock":     -1,
@@ -120,7 +177,7 @@ func RunDigiflazzSync() (int, int, []string, error) { // <--- Perhatikan return 
 			return err
 		}
 
-		// Produk Digiflazz biasa di-reset sebelum status terbaru dari provider diterapkan.
+		// Produk Digiflazz biasa di-reset sebelum status terbaru diterapkan.
 		// Produk testing dikecualikan dari reset ini.
 		if err := tx.Model(&models.Product{}).
 			Where("LOWER(provider) = ?", "digiflazz").
@@ -131,36 +188,39 @@ func RunDigiflazzSync() (int, int, []string, error) { // <--- Perhatikan return 
 		}
 
 		var catalogs []models.Catalog
-		tx.Select("card_code").Find(&catalogs) // Cari katalog yg aktif aja
+		if err := tx.Select("card_code").Find(&catalogs).Error; err != nil {
+			return err
+		}
 
-		validCatalogs := make(map[string]bool)
-		for _, c := range catalogs {
-			if c.CardCode != "" {
-				validCatalogs[c.CardCode] = true
+		validCatalogs := make(map[string]bool, len(catalogs))
+		for _, catalog := range catalogs {
+			if catalog.CardCode != "" {
+				validCatalogs[catalog.CardCode] = true
 			}
 		}
 
 		for _, item := range data {
-			p, ok := item.(map[string]interface{})
+			providerProduct, ok := item.(map[string]interface{})
 			if !ok {
 				continue
 			}
 
-			sku, _ := p["buyer_sku_code"].(string)
+			sku, _ := providerProduct["buyer_sku_code"].(string)
+			sku = strings.TrimSpace(sku)
 			if sku == "" {
 				continue
 			}
 
-			brand, _ := p["brand"].(string)
-			name, _ := p["product_name"].(string)
-			price, _ := p["price"].(float64)
+			brand, _ := providerProduct["brand"].(string)
+			name, _ := providerProduct["product_name"].(string)
+			price, _ := providerProduct["price"].(float64)
 
-			buyerStatus, _ := p["buyer_product_status"].(bool)
-			sellerStatus, _ := p["seller_product_status"].(bool)
+			buyerStatus, _ := providerProduct["buyer_product_status"].(bool)
+			sellerStatus, _ := providerProduct["seller_product_status"].(bool)
 			isActive := buyerStatus && sellerStatus
 
-			unlimitedStock, _ := p["unlimited_stock"].(bool)
-			digiStock, _ := p["stock"].(float64)
+			unlimitedStock, _ := providerProduct["unlimited_stock"].(bool)
+			digiStock, _ := providerProduct["stock"].(float64)
 			finalStock := 0
 			if unlimitedStock {
 				finalStock = -1
@@ -170,35 +230,86 @@ func RunDigiflazzSync() (int, int, []string, error) { // <--- Perhatikan return 
 
 			smartCode := GenerateSmartCode(brand)
 
-			// 🔥 GATEKEEPER & RADAR
+			// Produk tanpa katalog valid masuk staging area, bukan inventory utama.
 			if !validCatalogs[smartCode] {
-				// Cek apakah SKU ini udah ada di tabel pending biar gak spam insert
-				var existingPending models.PendingProduct
-				errCheck := tx.Where("raw_sku = ?", sku).First(&existingPending).Error
+				unmappedLabel := strings.TrimSpace(brand)
+				if unmappedLabel == "" {
+					unmappedLabel = smartCode
+				}
+				if unmappedLabel != "" {
+					unmappedMap[unmappedLabel] = true
+				}
 
-				// Kalau belum ada di pending, baru kita insert
-				if errCheck != nil {
-					tx.Create(&models.PendingProduct{
+				var existingPending models.PendingProduct
+				errCheck := tx.
+					Where("raw_sku = ?", sku).
+					First(&existingPending).
+					Error
+
+				switch {
+				case errors.Is(errCheck, gorm.ErrRecordNotFound):
+					if err := tx.Create(&models.PendingProduct{
 						RawSKU:   sku,
 						RawBrand: brand,
 						RawName:  name,
 						Provider: "digiflazz",
 						Status:   "pending",
-					})
+					}).Error; err != nil {
+						return err
+					}
+				case errCheck != nil:
+					return errCheck
 				}
-				continue // Langsung lanjut, JANGAN buat produk di tabel utama!
+
+				continue
 			}
 
 			var existing models.Product
-			errFind := tx.Unscoped().Where("code = ?", sku).First(&existing).Error
-			if errors.Is(errFind, gorm.ErrRecordNotFound) {
-				tx.Create(&models.Product{Name: name, Code: sku, Price: price, IsActive: isActive, Provider: "digiflazz", CatalogCardCode: smartCode, Stock: finalStock})
-			} else if errFind != nil {
+			errFind := tx.Unscoped().
+				Where("code = ?", sku).
+				First(&existing).
+				Error
+
+			switch {
+			case errors.Is(errFind, gorm.ErrRecordNotFound):
+				if err := tx.Create(&models.Product{
+					Name:            name,
+					Code:            sku,
+					Price:           price,
+					IsActive:        isActive,
+					Provider:        "digiflazz",
+					CatalogCardCode: smartCode,
+					Stock:           finalStock,
+				}).Error; err != nil {
+					return err
+				}
+
+			case errFind != nil:
 				return errFind
-			} else if existing.DeletedAt.Valid {
+
+			case existing.DeletedAt.Valid:
+				// Produk legacy yang masih soft-deleted tidak dihidupkan diam-diam.
 				continue
-			} else {
-				tx.Model(&existing).Updates(map[string]interface{}{"name": name, "is_active": isActive, "price": price, "stock": finalStock, "catalog_cardcode": smartCode})
+
+			default:
+				updates := map[string]interface{}{
+					"name":      name,
+					"is_active": isActive,
+					"price":     price,
+					"stock":     finalStock,
+				}
+
+				// Grouping dan sort order tetap dikelola admin. Jika mapping
+				// provider memindahkan produk ke katalog lain, grup lama dilepas.
+				if existing.CatalogCardCode != smartCode {
+					updates["catalog_cardcode"] = smartCode
+					updates["product_group_id"] = nil
+					updates["sort_order"] = 0
+				}
+
+				if err := tx.Model(&existing).Updates(updates).Error; err != nil {
+					return err
+				}
 			}
 
 			count++
@@ -206,14 +317,15 @@ func RunDigiflazzSync() (int, int, []string, error) { // <--- Perhatikan return 
 				activeCount++
 			}
 		}
+
 		return nil
 	})
 
-	// Pindahin dari buku catatan ke format list array
-	var unmappedBrands []string
-	for b := range unmappedMap {
-		unmappedBrands = append(unmappedBrands, b)
+	unmappedBrands := make([]string, 0, len(unmappedMap))
+	for brand := range unmappedMap {
+		unmappedBrands = append(unmappedBrands, brand)
 	}
+	sort.Strings(unmappedBrands)
 
 	return count, activeCount, unmappedBrands, err
 }

@@ -47,11 +47,25 @@ func Connect() {
 
 	fmt.Println("🚀 Database Connected with Connection Pool!")
 
-	// 1. AUTO MIGRATE SCHEMA BARU
-	fmt.Println("🔄 Migrating Database Schema...")
-	err = DB.AutoMigrate(
+	// Catalog harus dimigrasikan lebih dulu karena ProductGroup dan Product
+	// memakai catalogs.card_code sebagai referenced key. Database lama belum
+	// tentu memiliki UNIQUE constraint meskipun model sekarang primaryKey.
+	fmt.Println("🔄 Preparing catalog reference schema...")
+	if err := DB.AutoMigrate(
 		&models.User{},
 		&models.Catalog{},
+	); err != nil {
+		log.Fatal("❌ Gagal Migrasi Schema Dasar: ", err)
+	}
+
+	if err := migrateCatalogReferenceIntegrity(); err != nil {
+		log.Fatal("❌ Gagal menyiapkan referensi katalog: ", err)
+	}
+
+	// Foreign key menuju catalogs.card_code baru dibuat setelah referenced key
+	// pada database lama dipastikan valid dan unik.
+	fmt.Println("🔄 Migrating Database Schema...")
+	err = DB.AutoMigrate(
 		&models.ProductGroup{},
 		&models.Product{},
 		&models.Transaction{},
@@ -94,6 +108,52 @@ func Connect() {
 	}
 
 	fmt.Println("✅ Database Preparation Complete!")
+}
+
+// migrateCatalogReferenceIntegrity upgrades legacy catalog tables before any
+// foreign key references catalogs.card_code. Migration sengaja berhenti dengan
+// pesan jelas daripada menghapus atau menggabungkan data katalog diam-diam.
+func migrateCatalogReferenceIntegrity() error {
+	return DB.Transaction(func(tx *gorm.DB) error {
+		var invalidCardCodes int64
+		if err := tx.Raw(`
+			SELECT COUNT(*)
+			FROM catalogs
+			WHERE card_code IS NULL OR BTRIM(card_code) = ''
+		`).Scan(&invalidCardCodes).Error; err != nil {
+			return err
+		}
+		if invalidCardCodes > 0 {
+			return fmt.Errorf(
+				"terdapat %d katalog dengan card_code kosong; perbaiki data katalog sebelum migrasi",
+				invalidCardCodes,
+			)
+		}
+
+		var duplicateCardCodes int64
+		if err := tx.Raw(`
+			SELECT COUNT(*)
+			FROM (
+				SELECT card_code
+				FROM catalogs
+				GROUP BY card_code
+				HAVING COUNT(*) > 1
+			) AS duplicate_catalogs
+		`).Scan(&duplicateCardCodes).Error; err != nil {
+			return err
+		}
+		if duplicateCardCodes > 0 {
+			return fmt.Errorf(
+				"terdapat %d card_code katalog duplikat; perbaiki duplikat sebelum migrasi",
+				duplicateCardCodes,
+			)
+		}
+
+		return tx.Exec(`
+			CREATE UNIQUE INDEX IF NOT EXISTS idx_catalogs_card_code_reference
+			ON catalogs (card_code)
+		`).Error
+	})
 }
 
 // migrateProductGroupIntegrity is intentionally idempotent. It repairs rows
