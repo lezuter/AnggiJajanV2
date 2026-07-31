@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import Image from "next/image";
 import { useApi } from "@/hooks/useApi";
 
 // Tipe Data
@@ -77,7 +78,7 @@ export default function AdminCatalogPage() {
         const data = await res.json();
         setCatalogs(Array.isArray(data) ? data : []);
       }
-    } catch (error) {
+    } catch {
       console.error("Gagal load katalog");
     } finally {
       setLoading(false);
@@ -250,10 +251,13 @@ export default function AdminCatalogPage() {
                     >
                       {/* IMAGE */}
                       <td className="py-4 px-2">
-                        <div className="w-10 h-10 rounded-xl overflow-hidden border border-white/10 bg-white/5 shadow-inner">
-                          <img
+                        <div className="relative w-10 h-10 rounded-xl overflow-hidden border border-white/10 bg-white/5 shadow-inner">
+                          <Image
                             src={cat.image_url || "/file.svg"}
                             alt={cat.name}
+                            fill
+                            unoptimized
+                            sizes="40px"
                             className="w-full h-full object-cover opacity-90 group-hover:opacity-100 transition-opacity"
                           />
                         </div>

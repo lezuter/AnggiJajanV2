@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import NextImage from "next/image";
 import { useApi } from "@/hooks/useApi";
 import {
   Plus,
@@ -236,8 +237,12 @@ export default function BannersPage() {
               >
                 {/* PREVIEW IMAGE KACA */}
                 <div className="aspect-video w-full bg-black/50 relative overflow-hidden">
-                  <img
-                    src={banner.image_url}
+                  <NextImage
+                    src={banner.image_url || "/file.svg"}
+                    alt="Preview banner promosi"
+                    fill
+                    unoptimized
+                    sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
                     className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
                     onError={(e) =>
                       (e.currentTarget.src =

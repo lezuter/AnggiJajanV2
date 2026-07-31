@@ -91,11 +91,14 @@ export default function CatalogSection ({
   const gridId = `${sectionId}-grid`
   const shouldReduceMotion = useReducedMotion()
   const collapsedItemCount = useCollapsedItemCount(variant)
-  const [isExpanded, setIsExpanded] = useState(false)
-
-  useEffect(() => {
-    setIsExpanded(false)
-  }, [items, title, variant])
+  const sectionStateKey = useMemo(
+    () => `${title}:${variant}:${items.map(item => item.slug).join('|')}`,
+    [items, title, variant]
+  )
+  const [expandedSectionKey, setExpandedSectionKey] = useState<string | null>(
+    null
+  )
+  const isExpanded = expandedSectionKey === sectionStateKey
 
   const visibleItems = useMemo(
     () => (isExpanded ? items : items.slice(0, collapsedItemCount)),
@@ -180,7 +183,11 @@ export default function CatalogSection ({
             type='button'
             aria-expanded={isExpanded}
             aria-controls={gridId}
-            onClick={() => setIsExpanded(current => !current)}
+            onClick={() =>
+              setExpandedSectionKey(current =>
+                current === sectionStateKey ? null : sectionStateKey
+              )
+            }
             whileHover={
               shouldReduceMotion
                 ? undefined

@@ -90,7 +90,7 @@ export default function PendingProductsTable() {
         const errData = await res.json()
         alert(`Gagal: ${errData.error}`)
       }
-    } catch (error) {
+    } catch {
       alert("Error jaringan cuy.")
     } finally {
       setApprovingId(null)

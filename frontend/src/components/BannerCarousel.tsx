@@ -7,6 +7,7 @@ interface Banner {
   ID: number;
   image_url: string;
   description: string;
+  is_active?: boolean;
 }
 
 export default function BannerCarousel() {
@@ -17,10 +18,10 @@ export default function BannerCarousel() {
     const fetchBanners = async () => {
       try {
         const res = await fetch("http://localhost:3001/api/banners");
-        const data = await res.json();
+        const data = (await res.json()) as Banner[];
         setBanners(
           Array.isArray(data)
-            ? data.filter((b: any) => b.is_active !== false)
+            ? data.filter((banner) => banner.is_active !== false)
             : [],
         );
       } catch (err) {
@@ -56,6 +57,7 @@ export default function BannerCarousel() {
           <motion.img
             key={banners[current].ID}
             src={banners[current].image_url}
+            alt={banners[current].description || "Banner promosi"}
             initial={{ opacity: 0, scale: 1.1 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.9 }}

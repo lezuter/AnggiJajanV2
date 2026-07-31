@@ -3,6 +3,18 @@
 import { useState, useEffect, useCallback } from "react";
 import { useApi } from "@/hooks/useApi"; // 🔥 1. IMPORT SATPAM
 
+interface SettingItem {
+  key: string;
+  value: string;
+}
+
+const isSettingItem = (value: unknown): value is SettingItem => {
+  if (typeof value !== "object" || value === null) return false;
+
+  const item = value as Record<string, unknown>;
+  return typeof item.key === "string" && typeof item.value === "string";
+};
+
 // ✨ PREMIUM GLASSMORPHISM COMPONENT ✨
 const CardBase = ({
   children,
@@ -52,24 +64,28 @@ export default function SettingsPage() {
     try {
       const res = await get("/admin/settings");
       if (res.ok) {
-        const data = await res.json();
+        const data: unknown = await res.json();
 
-        const newSettings = { ...formData };
         if (Array.isArray(data)) {
-          data.forEach((item: any) => {
-            if (item.key === "margin_percent")
-              newSettings.margin_percent = item.value;
-            if (item.key === "flat_fee") newSettings.flat_fee = item.value;
+          setFormData((current) => {
+            const newSettings = { ...current };
+
+            data.filter(isSettingItem).forEach((item) => {
+              if (item.key === "margin_percent")
+                newSettings.margin_percent = item.value;
+              if (item.key === "flat_fee") newSettings.flat_fee = item.value;
+            });
+
+            return newSettings;
           });
         }
-        setFormData(newSettings);
       }
     } catch (error) {
       console.error("Gagal load setting", error);
     } finally {
       setLoading(false);
     }
-  }, [get]); // Dependensi form data aman karena kita cuma override key-nya
+  }, [get]);
 
   // Load Awal
   useEffect(() => {
@@ -119,9 +135,11 @@ export default function SettingsPage() {
           `2. Harga ${dataSync.total_processed || "semua"} Produk Berhasil Diupdate.\n\n` +
           `Tombol akan dikunci selama 60 detik agar server aman.`,
       );
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error(error);
-      alert("❌ Terjadi kesalahan: " + error.message);
+      const message =
+        error instanceof Error ? error.message : "Kesalahan tidak diketahui";
+      alert("❌ Terjadi kesalahan: " + message);
     } finally {
       setSaving(false);
     }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import AdminTemplate from "@/components/AdminTemplate";
 
@@ -10,6 +10,14 @@ const normalizePath = (value: string | null) => {
   return value.replace(/\/+$/, "");
 };
 
+const subscribeToHydration = () => () => {};
+const subscribeToStorage = (onStoreChange: () => void) => {
+  window.addEventListener("storage", onStoreChange);
+  return () => window.removeEventListener("storage", onStoreChange);
+};
+const getClientToken = () => window.localStorage.getItem("token");
+const getServerToken = () => null;
+
 export default function AdminLayout({
   children,
 }: {
@@ -17,21 +25,21 @@ export default function AdminLayout({
 }) {
   const router = useRouter();
   const pathname = usePathname();
-  const [isAuthorized, setIsAuthorized] = useState(false);
-  const [isMounted, setIsMounted] = useState(false);
+  const isHydrated = useSyncExternalStore(
+    subscribeToHydration,
+    () => true,
+    () => false,
+  );
+  const token = useSyncExternalStore(
+    subscribeToStorage,
+    getClientToken,
+    getServerToken,
+  );
+  const currentPath = normalizePath(pathname);
+  const isLoginPage = currentPath === "/admin/login";
 
   useEffect(() => {
-    setIsMounted(true);
-  }, []);
-
-  useEffect(() => {
-    if (!isMounted) return;
-
-    const currentPath = normalizePath(pathname);
-    const isLoginPage = currentPath === "/admin/login";
-    const token = localStorage.getItem("token");
-
-    setIsAuthorized(false);
+    if (!isHydrated) return;
 
     if (isLoginPage && token) {
       router.replace("/admin/dashboard/");
@@ -40,11 +48,12 @@ export default function AdminLayout({
 
     if (!isLoginPage && !token) {
       router.replace("/admin/login/");
-      return;
     }
+  }, [isHydrated, isLoginPage, router, token]);
 
-    setIsAuthorized(true);
-  }, [isMounted, pathname, router]);
+  const isAuthorized =
+    isHydrated &&
+    ((isLoginPage && !token) || (!isLoginPage && Boolean(token)));
 
   // Loading State
   if (!isAuthorized) {
@@ -58,7 +67,7 @@ export default function AdminLayout({
   }
 
   // Render Halaman Login Polosan
-  if (normalizePath(pathname) === "/admin/login") {
+  if (isLoginPage) {
     return <main>{children}</main>;
   }
 

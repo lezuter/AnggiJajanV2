@@ -294,7 +294,6 @@ function getHeroTitleSizeRange () {
 function AutoFitHeroTitle ({ text }: AutoFitHeroTitleProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const titleRef = useRef<HTMLHeadingElement>(null)
-  const [fontSize, setFontSize] = useState<number | null>(null)
 
   const fitTitle = useCallback(() => {
     const container = containerRef.current
@@ -333,7 +332,6 @@ function AutoFitHeroTitle ({ text }: AutoFitHeroTitleProps) {
     }
 
     title.style.fontSize = `${bestFit}px`
-    setFontSize(current => (current === bestFit ? current : bestFit))
   }, [])
 
   useLayoutEffect(() => {
@@ -358,7 +356,6 @@ function AutoFitHeroTitle ({ text }: AutoFitHeroTitleProps) {
       <h1
         ref={titleRef}
         className='max-w-4xl text-balance break-words font-medium leading-[1.02] tracking-[-0.045em] text-white text-[42px] sm:text-[58px] md:text-[72px] lg:text-[88px] xl:text-[98px]'
-        style={fontSize === null ? undefined : { fontSize: `${fontSize}px` }}
       >
         {text}
       </h1>

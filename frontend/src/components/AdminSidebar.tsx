@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 
 import { useFrame } from "@react-three/fiber";
+import type { Group } from "three";
 import {
   useGLTF,
   Float,
@@ -68,7 +69,7 @@ function StudioSoftboxLighting() {
 
 function NeonController({ isCollapsed }: { isCollapsed: boolean }) {
   const { scene } = useGLTF("/animations/model_1781361231466.gltf");
-  const groupRef = useRef<any>(null);
+  const groupRef = useRef<Group>(null);
 
   useFrame((state, delta) => {
     if (groupRef.current) {

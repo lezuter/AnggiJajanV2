@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useApi } from "@/hooks/useApi"; // 🔥 IMPORT HOOK API
 
@@ -14,16 +14,16 @@ type NotificationItem = {
 };
 
 export default function NotificationBell() {
-  const api = useApi(); // 🔥 INISIALISASI
+  const { get } = useApi(); // 🔥 INISIALISASI
   const [isOpen, setIsOpen] = useState(false);
   const [notifs, setNotifs] = useState<NotificationItem[]>([]);
   const [loading, setLoading] = useState(true);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  const fetchNotifications = async () => {
+  const fetchNotifications = useCallback(async () => {
     try {
       // 🔥 CUKUP PANGGIL INI, GAK PERLU SET TOKEN MANUAL
-      const res = await api.get("/admin/dashboard");
+      const res = await get("/admin/dashboard");
 
       if (res.ok) {
         const data = await res.json();
@@ -46,11 +46,11 @@ export default function NotificationBell() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [get]);
 
   useEffect(() => {
     fetchNotifications();
-  }, []);
+  }, [fetchNotifications]);
 
   // Tutup dropdown kalau klik di luar area
   useEffect(() => {

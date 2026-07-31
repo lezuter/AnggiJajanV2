@@ -4,12 +4,24 @@ import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { useApi } from "@/hooks/useApi";
 
+interface RecentTransaction {
+  ID: number;
+  invoice_id: string;
+  Product?: {
+    name?: string;
+    code?: string;
+  };
+  amount: number;
+  status: string;
+  sn?: string;
+}
+
 interface DashboardStats {
   income: number;
   transactions: number;
   products: number;
   expired_banners: number;
-  recent: any[];
+  recent: RecentTransaction[];
 }
 
 // ✨ PREMIUM GLASSMORPHISM CARD ✨
@@ -235,7 +247,7 @@ export default function DashboardOverview() {
                       </td>
                     </tr>
                   ) : (
-                    stats.recent.map((trx, index) => (
+                    stats.recent.map((trx) => (
                       <tr
                         key={trx.ID}
                         /* 🔥 ROW HOVER: Efek ngambang (translate-y) & nyala tipis, garis bawah nyaris tak terlihat */
@@ -284,7 +296,7 @@ export default function DashboardOverview() {
                               trx.status === "SUCCESS") &&
                             trx.sn ? (
                               <button
-                                onClick={() => copyToClipboard(trx.sn)}
+                                onClick={() => copyToClipboard(trx.sn ?? "")}
                                 className="text-slate-500 hover:text-sky-400 bg-white/[0.02] hover:bg-sky-400/10 p-2 rounded-full transition-all duration-300 border border-white/[0.02] hover:border-sky-400/30 hover:shadow-[0_0_10px_rgba(56,189,248,0.2)]"
                                 title="Copy SN"
                               >

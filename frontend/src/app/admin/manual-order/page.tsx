@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useMemo, useCallback } from 'react'
+import Image from 'next/image'
 import Lottie from 'lottie-react'
 import { motion } from 'framer-motion'
 import { useApi } from '@/hooks/useApi' // 🔥 1. IMPORT SATPAM
@@ -395,7 +396,6 @@ export default function ManualOrderPage () {
   // Check account automatically after the admin stops typing.
   useEffect(() => {
     let cancelled = false
-    let timeoutID: number | undefined
 
     setNickname(null)
     setAccountCheckMessage('')
@@ -407,7 +407,7 @@ export default function ManualOrderPage () {
 
     setAccountCheckStatus('IDLE')
 
-    timeoutID = window.setTimeout(async () => {
+    const timeoutID = window.setTimeout(async () => {
       setAccountCheckStatus('CHECKING')
 
       try {
@@ -449,7 +449,7 @@ export default function ManualOrderPage () {
 
     return () => {
       cancelled = true
-      if (timeoutID !== undefined) window.clearTimeout(timeoutID)
+      window.clearTimeout(timeoutID)
     }
   }, [
     accountCheckRetryKey,
@@ -2294,9 +2294,12 @@ export default function ManualOrderPage () {
                       <div className='space-y-4'>
                         {isPaymentURLImage ? (
                           <div>
-                            <img
+                            <Image
                               src={paymentURL}
                               alt='QRIS Payment'
+                              width={240}
+                              height={240}
+                              unoptimized
                               className='mx-auto h-60 w-60 rounded-2xl bg-white p-3 object-contain'
                             />
 
