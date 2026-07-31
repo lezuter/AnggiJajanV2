@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 
@@ -359,6 +360,7 @@ const maxBulkProductIDs = 500
 type bulkProductChanges struct {
 	AdminEnabled    *bool   `json:"admin_enabled"`
 	CatalogCardCode *string `json:"catalog_cardcode"`
+	ImageURL        *string `json:"image_url"`
 }
 
 type bulkUpdateProductsInput struct {
@@ -414,6 +416,26 @@ func normalizeBulkProductIDs(productIDs []uint) ([]uint, error) {
 	return uniqueIDs, nil
 }
 
+func normalizeBulkProductImageURL(rawImageURL string) (string, error) {
+	imageURL := strings.TrimSpace(rawImageURL)
+	if imageURL == "" {
+		return "", fmt.Errorf("image_url tidak boleh kosong")
+	}
+	if len(imageURL) > 2048 {
+		return "", fmt.Errorf("image_url terlalu panjang")
+	}
+	if strings.HasPrefix(imageURL, "/") && !strings.HasPrefix(imageURL, "//") {
+		return imageURL, nil
+	}
+
+	parsedURL, err := url.ParseRequestURI(imageURL)
+	if err != nil || parsedURL.Host == "" || (parsedURL.Scheme != "http" && parsedURL.Scheme != "https") {
+		return "", fmt.Errorf("image_url harus berupa URL mentah http(s) atau path lokal /images/...")
+	}
+
+	return imageURL, nil
+}
+
 func BulkUpdateProducts(c *fiber.Ctx) error {
 	var input bulkUpdateProductsInput
 	if err := decodeStrictProductJSON(c, &input); err != nil {
@@ -427,7 +449,7 @@ func BulkUpdateProducts(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	updates := make(map[string]interface{}, 2)
+	updates := make(map[string]interface{}, 3)
 	if input.Changes.AdminEnabled != nil {
 		updates["admin_enabled"] = *input.Changes.AdminEnabled
 	}
@@ -442,6 +464,16 @@ func BulkUpdateProducts(c *fiber.Ctx) error {
 		}
 
 		updates["catalog_cardcode"] = catalogCardCode
+	}
+	if input.Changes.ImageURL != nil {
+		imageURL, imageURLError := normalizeBulkProductImageURL(*input.Changes.ImageURL)
+		if imageURLError != nil {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"error": imageURLError.Error(),
+			})
+		}
+
+		updates["image_url"] = imageURL
 	}
 
 	if len(updates) == 0 {

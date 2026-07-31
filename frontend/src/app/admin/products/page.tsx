@@ -58,6 +58,8 @@ interface BulkEditForm {
   adminEnabled: boolean;
   applyCatalog: boolean;
   catalogCardCode: string;
+  applyImage: boolean;
+  imageUrl: string;
 }
 
 interface BulkMutationResult {
@@ -70,6 +72,7 @@ interface BulkMutationResult {
 interface BulkAllowedChanges {
   admin_enabled?: boolean;
   catalog_cardcode?: string;
+  image_url?: string;
 }
 
 interface BulkFeedback {
@@ -84,7 +87,6 @@ const disabledBulkFields = [
   ['Harga final', 'Harga setiap SKU berbeda dan tidak aman disamakan.'],
   ['Harga normal / harga coret', 'Nilai diskon harus diatur per produk.'],
   ['Harga modal', 'Berasal dari provider dan berbeda per SKU.'],
-  ['Thumbnail URL', 'Setiap produk membutuhkan thumbnail masing-masing.'],
   ['Status provider', 'Dikelola otomatis oleh sinkronisasi provider.'],
   ['Provider', 'Provider merupakan bagian dari sumber dan routing transaksi.'],
   ['Stock', 'Stock provider berbeda dan dapat ditimpa saat sinkronisasi.']
@@ -94,7 +96,23 @@ const initialBulkEditForm: BulkEditForm = {
   applyStatus: false,
   adminEnabled: true,
   applyCatalog: false,
-  catalogCardCode: ''
+  catalogCardCode: '',
+  applyImage: false,
+  imageUrl: ''
+}
+
+function isValidBulkImageURL(imageUrl: string) {
+  if (imageUrl.startsWith('/') && !imageUrl.startsWith('//')) return true
+
+  try {
+    const parsedUrl = new URL(imageUrl)
+    return (
+      (parsedUrl.protocol === 'http:' || parsedUrl.protocol === 'https:') &&
+      Boolean(parsedUrl.host)
+    )
+  } catch {
+    return false
+  }
 }
 
 const mainCategories = [
@@ -593,6 +611,17 @@ export default function ProductsPage() {
         return
       }
       changes.catalog_cardcode = catalogCardCode
+    }
+    if (bulkEditForm.applyImage) {
+      const imageUrl = bulkEditForm.imageUrl.trim()
+      if (!isValidBulkImageURL(imageUrl)) {
+        setBulkFeedback({
+          type: 'error',
+          message: 'Thumbnail harus berupa URL mentah http(s) atau path lokal /images/...'
+        })
+        return
+      }
+      changes.image_url = imageUrl
     }
     if (Object.keys(changes).length === 0) {
       setBulkFeedback({
@@ -1325,6 +1354,55 @@ export default function ProductsPage() {
                 </label>
               </div>
 
+              <div className={`rounded-2xl border p-4 transition-colors md:col-span-2 ${
+                bulkEditForm.applyImage
+                  ? 'border-[#0084FF]/30 bg-[#0084FF]/[0.07]'
+                  : 'border-white/10 bg-white/[0.025]'
+              }`}>
+                <label className="flex cursor-pointer items-start gap-3">
+                  <input
+                    type="checkbox"
+                    checked={bulkEditForm.applyImage}
+                    onChange={event =>
+                      setBulkEditForm(current => ({
+                        ...current,
+                        applyImage: event.target.checked
+                      }))
+                    }
+                    className="mt-0.5 h-4 w-4 accent-[#0084FF]"
+                  />
+                  <span>
+                    <span className="block text-sm font-semibold text-white">
+                      Terapkan thumbnail yang sama
+                    </span>
+                    <span className="mt-1 block text-xs leading-5 text-white/40">
+                      URL ini akan mengganti thumbnail seluruh produk yang dipilih.
+                    </span>
+                  </span>
+                </label>
+
+                <label className="mt-4 block text-xs font-medium text-white/55">
+                  Thumbnail URL
+                  <input
+                    type="text"
+                    inputMode="url"
+                    value={bulkEditForm.imageUrl}
+                    disabled={!bulkEditForm.applyImage}
+                    placeholder="https://i.imgur.com/vkLufAE.png"
+                    onChange={event =>
+                      setBulkEditForm(current => ({
+                        ...current,
+                        imageUrl: event.target.value
+                      }))
+                    }
+                    className="mt-2 h-11 w-full rounded-xl border border-white/10 bg-[#0b0e16] px-3 font-mono text-xs text-white outline-none placeholder:text-white/20 focus:border-[#0084FF]/60 disabled:cursor-not-allowed disabled:opacity-35"
+                  />
+                </label>
+                <p className="mt-2 text-[10px] leading-4 text-white/30">
+                  Gunakan URL mentah http(s) atau path lokal /images/..., bukan format Markdown.
+                </p>
+              </div>
+
             </section>
 
             <section className="rounded-2xl border border-white/10 bg-white/[0.025] p-4">
@@ -1351,8 +1429,14 @@ export default function ProductsPage() {
                         }
                       </li>
                     )}
+                    {bulkEditForm.applyImage && (
+                      <li className="break-all">
+                        Thumbnail → {bulkEditForm.imageUrl.trim() || 'Belum diisi'}
+                      </li>
+                    )}
                     {!bulkEditForm.applyStatus &&
-                      !bulkEditForm.applyCatalog && (
+                      !bulkEditForm.applyCatalog &&
+                      !bulkEditForm.applyImage && (
                       <li>Belum ada perubahan yang diaktifkan.</li>
                     )}
                   </ul>
@@ -1400,7 +1484,8 @@ export default function ProductsPage() {
                   isBulkActionLoading ||
                   (
                     !bulkEditForm.applyStatus &&
-                    !bulkEditForm.applyCatalog
+                    !bulkEditForm.applyCatalog &&
+                    !bulkEditForm.applyImage
                   )
                 }
                 className="inline-flex min-h-11 items-center justify-center gap-2 rounded-full border border-[#0084FF]/35 bg-[#0084FF]/15 px-6 text-sm font-semibold text-sky-100 transition-colors hover:bg-[#0084FF]/25 disabled:cursor-not-allowed disabled:opacity-40"

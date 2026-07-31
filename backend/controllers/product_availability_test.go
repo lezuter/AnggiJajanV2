@@ -94,10 +94,9 @@ func TestNormalizeBulkProductIDs(t *testing.T) {
 	}
 }
 
-func TestBulkUpdateRejectsProviderAndProductFields(t *testing.T) {
+func TestBulkUpdateRejectsProviderAndPricingFields(t *testing.T) {
 	for _, field := range []string{
 		`"is_active":false`,
-		`"image_url":"https://example.com/product.png"`,
 		`"price":1000`,
 	} {
 		t.Run(field, func(t *testing.T) {
@@ -119,7 +118,34 @@ func TestBulkUpdateRejectsProviderAndProductFields(t *testing.T) {
 	}
 }
 
-func TestBulkUpdatePayloadAcceptsOnlyAdminFields(t *testing.T) {
+func TestNormalizeBulkProductImageURL(t *testing.T) {
+	for _, imageURL := range []string{
+		"https://i.imgur.com/vkLufAE.png",
+		"http://example.com/product.png",
+		"/images/products/pubg.png",
+	} {
+		normalized, err := normalizeBulkProductImageURL("  " + imageURL + "  ")
+		if err != nil {
+			t.Fatalf("expected %q to be accepted: %v", imageURL, err)
+		}
+		if normalized != imageURL {
+			t.Fatalf("expected %q, got %q", imageURL, normalized)
+		}
+	}
+
+	for _, imageURL := range []string{
+		"",
+		"[https://i.imgur.com/a.png](https://i.imgur.com/a.png)",
+		"//example.com/product.png",
+		"javascript:alert(1)",
+	} {
+		if _, err := normalizeBulkProductImageURL(imageURL); err == nil {
+			t.Fatalf("expected %q to be rejected", imageURL)
+		}
+	}
+}
+
+func TestBulkUpdatePayloadAcceptsAllowedAdminFields(t *testing.T) {
 	app := fiber.New()
 	app.Patch("/", func(c *fiber.Ctx) error {
 		var input bulkUpdateProductsInput
@@ -129,13 +155,15 @@ func TestBulkUpdatePayloadAcceptsOnlyAdminFields(t *testing.T) {
 		if input.Changes.AdminEnabled == nil ||
 			*input.Changes.AdminEnabled ||
 			input.Changes.CatalogCardCode == nil ||
-			*input.Changes.CatalogCardCode != "PUBGM" {
+			*input.Changes.CatalogCardCode != "PUBGM" ||
+			input.Changes.ImageURL == nil ||
+			*input.Changes.ImageURL != "https://i.imgur.com/vkLufAE.png" {
 			return c.SendStatus(fiber.StatusUnprocessableEntity)
 		}
 		return c.SendStatus(fiber.StatusNoContent)
 	})
 
-	body := `{"product_ids":[1,2],"changes":{"admin_enabled":false,"catalog_cardcode":"PUBGM"}}`
+	body := `{"product_ids":[1,2],"changes":{"admin_enabled":false,"catalog_cardcode":"PUBGM","image_url":"https://i.imgur.com/vkLufAE.png"}}`
 	request := httptest.NewRequest("PATCH", "/", strings.NewReader(body))
 	request.Header.Set(fiber.HeaderContentType, fiber.MIMEApplicationJSON)
 
