@@ -35,7 +35,6 @@ interface Product {
   name: string;
   code: string;
   price: number;
-  base_price?: number;
   stock: number;
   is_active: boolean;
   admin_enabled: boolean;
@@ -960,8 +959,8 @@ export default function ProductsPage() {
                           </td>
                           <td className="px-3 text-right">
                             <p className="text-[9px] uppercase tracking-wider text-white/35">Jual</p>
-                            <p className="truncate font-mono text-xs font-bold text-white">Rp {p.price.toLocaleString()}</p>
-                            <p className="mt-1 truncate text-[10px] text-white/40">Modal {p.base_price != null ? `Rp ${p.base_price.toLocaleString()}` : '—'}</p>
+                            <p className="truncate font-mono text-xs font-bold text-white">Rp {Math.round(p.price * 1.05).toLocaleString()}</p>
+                            <p className="mt-1 truncate text-[10px] text-white/40">Modal Rp {p.price.toLocaleString()}</p>
                           </td>
                           <td className="px-2 text-center font-mono text-sm text-white/80">
                             {p.stock === -1 ? '∞' : p.stock === 0 ? <span className="text-red-400 text-xs font-bold bg-red-500/10 px-2 py-1 rounded-md">KOSONG</span> : p.stock}
@@ -1067,8 +1066,8 @@ export default function ProductsPage() {
                           </div>
                           <div className="min-w-0 rounded-xl bg-black/10 p-3 text-right">
                             <dt className="text-[9px] uppercase tracking-wider text-white/35">Harga</dt>
-                            <dd className="mt-1 truncate font-mono font-bold text-white">Jual Rp {p.price.toLocaleString()}</dd>
-                            <dd className="mt-1 truncate text-[10px] text-white/40">Modal {p.base_price != null ? `Rp ${p.base_price.toLocaleString()}` : '-'}</dd>
+                            <dd className="mt-1 truncate font-mono font-bold text-white">Jual Rp {Math.round(p.price * 1.05).toLocaleString()}</dd>
+                            <dd className="mt-1 truncate text-[10px] text-white/40">Modal Rp {p.price.toLocaleString()}</dd>
                           </div>
                           <div className="rounded-xl bg-black/10 p-3">
                             <dt className="text-[9px] uppercase tracking-wider text-white/35">Stock</dt>
