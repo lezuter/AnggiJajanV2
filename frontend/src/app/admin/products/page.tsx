@@ -796,7 +796,7 @@ export default function ProductsPage() {
           {selectedItems.length > 0 && (
             <section
               aria-label="Aksi produk terpilih"
-              className="aj-public-glass sticky top-4 z-40 mb-4 rounded-3xl p-4 sm:p-5"
+              className="sticky top-4 z-40 mb-4 rounded-3xl border border-white/[0.08] bg-black/[0.035] p-4 backdrop-blur-md backdrop-saturate-150 sm:p-5"
             >
               <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
                 <div className="flex items-center gap-3">
