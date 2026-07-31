@@ -11,7 +11,7 @@ import {
 } from 'react'
 import {
   Search, Package, AlertTriangle, TrendingUp,
-  Filter, Edit, Gamepad2, Smartphone,
+  Edit, Gamepad2, Smartphone,
   Zap, Wallet, Loader2, RefreshCw, ListChecks,
   Power, PowerOff, MoveRight, X, Info
 } from 'lucide-react'
@@ -300,6 +300,7 @@ export default function ProductsPage() {
   const [pendingBulkStatus, setPendingBulkStatus] = useState(true)
   const [moveCatalogCardCode, setMoveCatalogCardCode] = useState('')
   const [isBulkActionLoading, setIsBulkActionLoading] = useState(false)
+  const bulkActionLockRef = useRef(false)
   const [bulkFeedback, setBulkFeedback] = useState<BulkFeedback | null>(null)
 
   // ==========================================
@@ -518,6 +519,13 @@ export default function ProductsPage() {
     setBulkDialog('status')
   }
 
+  const showBulkEditDialog = () => {
+    setEditingProduct(null)
+    setBulkEditForm(initialBulkEditForm)
+    setBulkFeedback(null)
+    setBulkDialog('edit')
+  }
+
   const showMoveCatalogDialog = () => {
     setEditingProduct(null)
     setMoveCatalogCardCode('')
@@ -526,6 +534,9 @@ export default function ProductsPage() {
   }
 
   const executeBulkUpdate = async (changes: BulkAllowedChanges) => {
+    if (bulkActionLockRef.current || selectedItems.length === 0) return
+
+    bulkActionLockRef.current = true
     setIsBulkActionLoading(true)
     setBulkFeedback(null)
 
@@ -560,6 +571,7 @@ export default function ProductsPage() {
             : 'Bulk update produk gagal.'
       })
     } finally {
+      bulkActionLockRef.current = false
       setIsBulkActionLoading(false)
     }
   }
@@ -694,8 +706,10 @@ export default function ProductsPage() {
                 return (
                   <button
                     key={cat.id}
+                    type="button"
                     onClick={() => handleCategoryChange(cat.id)}
-                    className={`flex items-center gap-2 px-6 py-3 rounded-2xl whitespace-nowrap transition-all duration-300 font-bold text-sm shadow-sm ${isActive ? 'bg-[#0084FF] text-white shadow-[0_0_20px_rgba(0,132,255,0.4)]' : 'bg-white/5 text-white/50 hover:bg-white/10 hover:text-white border border-white/10'}`}
+                    onPointerUp={(event) => event.currentTarget.blur()}
+                    className={`flex items-center gap-2 px-6 py-3 rounded-2xl whitespace-nowrap transition-all duration-300 font-bold text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#0084FF]/70 ${isActive ? 'bg-[#0084FF] text-white shadow-[0_0_20px_rgba(0,132,255,0.4)]' : 'bg-white/5 text-white/50 hover:bg-white/10 hover:text-white border border-white/10'}`}
                   >
                     <Icon size={18} className={isActive ? 'text-white' : 'text-white/50'} />
                     {cat.name}
@@ -708,8 +722,10 @@ export default function ProductsPage() {
             <div className="bg-black/10 border border-white/5 p-2 rounded-2xl w-full">
               <div className="flex gap-2 overflow-x-auto custom-scrollbar items-center pb-1">
                 <button
+                  type="button"
                   onClick={() => setActiveCatalog('all')}
-                  className={`px-5 py-2.5 rounded-xl whitespace-nowrap transition-all font-bold text-xs uppercase tracking-wider ${activeCatalog === 'all' ? 'bg-white/10 text-white shadow-sm' : 'text-white/40 hover:text-white hover:bg-white/5'}`}
+                  onPointerUp={(event) => event.currentTarget.blur()}
+                  className={`px-5 py-2.5 rounded-xl whitespace-nowrap transition-all font-bold text-xs uppercase tracking-wider focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#0084FF]/70 ${activeCatalog === 'all' ? 'bg-white/10 text-white shadow-sm' : 'text-white/40 hover:text-white hover:bg-white/5'}`}
                 >
                   Semua
                 </button>
@@ -723,8 +739,10 @@ export default function ProductsPage() {
                     return (
                       <button
                         key={cat.cardcode}
+                        type="button"
                         onClick={() => setActiveCatalog(cat.cardcode)}
-                        className={`px-5 py-2.5 rounded-xl whitespace-nowrap transition-all font-bold text-xs tracking-wider ${isActive ? 'bg-[#0084FF]/20 text-[#0084FF] border border-[#0084FF]/30 shadow-[inset_0_0_10px_rgba(0,132,255,0.2)]' : 'bg-transparent text-white/50 hover:text-white hover:bg-white/5 border border-transparent'}`}
+                        onPointerUp={(event) => event.currentTarget.blur()}
+                        className={`px-5 py-2.5 rounded-xl whitespace-nowrap transition-all font-bold text-xs tracking-wider focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#0084FF]/70 ${isActive ? 'bg-[#0084FF]/20 text-[#0084FF] border border-[#0084FF]/30 shadow-[inset_0_0_10px_rgba(0,132,255,0.2)]' : 'bg-transparent text-white/50 hover:text-white hover:bg-white/5 border border-transparent'}`}
                       >
                         {cat.name}
                       </button>
@@ -748,10 +766,6 @@ export default function ProductsPage() {
               </div>
 
               <div className="flex gap-3 w-full md:w-auto">
-                <button className="flex-1 md:flex-none px-6 py-3.5 bg-white/5 border border-white/10 rounded-2xl flex items-center justify-center gap-2 hover:bg-white/10 transition-all text-white font-bold text-sm">
-                  <Filter size={18} /> <span className="hidden sm:block">Filters</span>
-                </button>
-
                 {activeTab === 'live' && (
                   <button
                     onClick={() => handleSyncAPI('all')}
@@ -782,17 +796,9 @@ export default function ProductsPage() {
           {selectedItems.length > 0 && (
             <section
               aria-label="Aksi produk terpilih"
-              className="sticky top-4 z-40 mb-4 overflow-hidden rounded-3xl border border-[#0084FF]/30 p-4 shadow-[0_22px_70px_rgba(0,0,0,0.3)] sm:p-5"
+              className="aj-frosted-glass sticky top-4 z-40 mb-4 rounded-3xl p-4 sm:p-5"
             >
-              <div
-                aria-hidden="true"
-                className="pointer-events-none absolute inset-0 bg-[#071a35]/55 bg-[linear-gradient(135deg,rgba(0,132,255,0.22),rgba(255,255,255,0.06))]"
-                style={{
-                  backdropFilter: 'blur(28px) saturate(150%)',
-                  WebkitBackdropFilter: 'blur(28px) saturate(150%)'
-                }}
-              />
-              <div className="relative z-10 flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+              <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
                 <div className="flex items-center gap-3">
                   <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-[#0084FF]/25 bg-[#0084FF]/10 text-[#0084FF]">
                     <ListChecks size={19} />
@@ -808,6 +814,14 @@ export default function ProductsPage() {
                 </div>
 
                 <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    disabled={isBulkActionLoading}
+                    onClick={showBulkEditDialog}
+                    className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-[#0084FF]/25 bg-[#0084FF]/10 px-3.5 text-xs font-semibold text-sky-200 transition-colors hover:bg-[#0084FF]/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0084FF]/70 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    <Edit size={15} /> Edit Massal
+                  </button>
                   <button
                     type="button"
                     disabled={isBulkActionLoading}
@@ -845,13 +859,13 @@ export default function ProductsPage() {
             </section>
           )}
 
-          {/* TABLE CONTAINER (TAB LIVE) */}
-          <div className="w-full bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl p-6 shadow-2xl relative z-10 overflow-hidden">
-            <div className="w-full overflow-x-auto custom-scrollbar">
-              <table className="w-full min-w-[1480px] table-fixed border-collapse text-left">
+          {/* PRODUCT INVENTORY (TAB LIVE) */}
+          <div className="relative z-10 w-full overflow-hidden rounded-3xl border border-white/10 bg-white/5 p-4 shadow-2xl backdrop-blur-xl sm:p-6">
+            <div className="hidden lg:block">
+              <table className="w-full table-fixed border-collapse text-left">
                 <thead>
                   <tr className="border-b border-white/10">
-                    <th className="w-[56px] py-4 pl-4">
+                    <th className="w-[52px] py-4 pl-2">
                       <SelectionCheckbox
                         checked={allDisplayedSelected}
                         indeterminate={someDisplayedSelected}
@@ -864,32 +878,25 @@ export default function ProductsPage() {
                         onChange={toggleAllDisplayedProducts}
                       />
                     </th>
-                    <th className="w-[80px] text-[11px] text-white/40 uppercase font-bold tracking-widest">IMG</th>
-                    <th className="w-[280px] px-4 text-[11px] font-bold uppercase tracking-widest text-white/40">PRODUCT NAME</th>
-                    <th className="w-[140px] px-4 text-[11px] font-bold uppercase tracking-widest text-white/40">PROVIDER</th>
-                    <th className="w-[180px] px-4 text-[11px] font-bold uppercase tracking-widest text-white/40">SKU CODE</th>
-                    <th className="w-[170px] px-4 text-right text-[11px] font-bold uppercase tracking-widest text-white/40">PRICE</th>
-                    <th className="w-[100px] text-center text-[11px] font-bold uppercase tracking-widest text-white/40">STOCK</th>
-                    <th className="w-[150px] text-center text-[11px] font-bold uppercase tracking-widest text-white/40">PROVIDER STATUS</th>
-                    <th className="w-[140px] text-center text-[11px] font-bold uppercase tracking-widest text-white/40">STOREFRONT</th>
-                    <th className="w-[72px] pr-4 text-right text-[11px] font-bold uppercase tracking-widest text-white/40">ACTION</th>
+                    <th className="px-3 text-[11px] font-bold uppercase tracking-widest text-white/40">Product</th>
+                    <th className="w-[19%] px-3 text-[11px] font-bold uppercase tracking-widest text-white/40">Provider / SKU</th>
+                    <th className="w-[16%] px-3 text-right text-[11px] font-bold uppercase tracking-widest text-white/40">Price</th>
+                    <th className="w-[9%] px-2 text-center text-[11px] font-bold uppercase tracking-widest text-white/40">Stock</th>
+                    <th className="w-[18%] px-2 text-center text-[11px] font-bold uppercase tracking-widest text-white/40">Status</th>
+                    <th className="w-[68px] pr-2 text-right text-[11px] font-bold uppercase tracking-widest text-white/40">Action</th>
                   </tr>
                 </thead>
                 <tbody>
                   {loading ? (
-                    // SKELETON LOADING
                     Array.from({ length: 5 }).map((_, i) => (
                       <tr key={i} className="border-b border-white/5 animate-pulse">
-                        <td className="py-5 pl-4"><div className="w-5 h-5 bg-white/5 rounded"></div></td>
-                        <td><div className="w-12 h-12 bg-white/5 rounded-2xl"></div></td>
-                        <td className="px-4"><div className="w-32 h-4 bg-white/5 rounded mb-2"></div><div className="w-20 h-3 bg-white/5 rounded"></div></td>
-                        <td className="px-4"><div className="w-20 h-4 bg-white/5 rounded"></div></td>
-                        <td className="px-4"><div className="w-24 h-4 bg-white/5 rounded"></div></td>
-                        <td className="px-4 text-right"><div className="w-24 h-4 bg-white/5 rounded ml-auto"></div></td>
-                        <td className="text-center"><div className="w-10 h-4 bg-white/5 rounded mx-auto"></div></td>
-                        <td className="text-center"><div className="w-16 h-6 bg-white/5 rounded-xl mx-auto"></div></td>
-                        <td className="text-center"><div className="w-16 h-6 bg-white/5 rounded-xl mx-auto"></div></td>
-                        <td className="pr-4"><div className="ml-auto h-9 w-9 rounded-xl bg-white/5"></div></td>
+                        <td className="py-5 pl-2"><div className="h-5 w-5 rounded bg-white/5" /></td>
+                        <td className="px-3"><div className="flex items-center gap-3"><div className="h-12 w-12 shrink-0 rounded-2xl bg-white/5" /><div className="min-w-0 flex-1"><div className="mb-2 h-4 w-2/3 rounded bg-white/5" /><div className="h-3 w-1/3 rounded bg-white/5" /></div></div></td>
+                        <td className="px-3"><div className="mb-2 h-3 w-1/2 rounded bg-white/5" /><div className="h-3 w-3/4 rounded bg-white/5" /></td>
+                        <td className="px-3"><div className="ml-auto mb-2 h-4 w-3/4 rounded bg-white/5" /><div className="ml-auto h-3 w-2/3 rounded bg-white/5" /></td>
+                        <td className="px-2"><div className="mx-auto h-4 w-10 rounded bg-white/5" /></td>
+                        <td className="px-2"><div className="mx-auto mb-1 h-6 w-24 rounded-xl bg-white/5" /><div className="mx-auto h-6 w-20 rounded-xl bg-white/5" /></td>
+                        <td className="pr-2"><div className="ml-auto h-9 w-9 rounded-xl bg-white/5" /></td>
                       </tr>
                     ))
                   ) : displayedProducts.length > 0 ? (
@@ -899,58 +906,56 @@ export default function ProductsPage() {
                       const catalogInfo = catalogs.find(c => c.cardcode === pCatalogCode);
 
                       return (
-                        <tr key={p.ID} className={`h-[85px] border-b border-white/5 transition-colors hover:bg-white/[0.035] group ${isSelected ? 'bg-[#0084FF]/[0.045]' : ''}`}>
-                          <td className="py-4 pl-4">
+                        <tr key={p.ID} className={`group h-[88px] border-b border-white/5 transition-colors hover:bg-white/[0.035] ${isSelected ? 'bg-[#0084FF]/[0.045]' : ''}`}>
+                          <td className="py-4 pl-2">
                             <SelectionCheckbox
                               checked={isSelected}
                               label={`${isSelected ? 'Hapus pilihan' : 'Pilih'} ${p.name}`}
                               onChange={() => toggleProductSelection(p.ID)}
                             />
                           </td>
-                          <td>
-                            <ProductTableThumbnail
-                              imageUrl={p.image_url}
-                              productName={p.name}
-                            />
+                          <td className="px-3 align-middle">
+                            <div className="flex min-w-0 items-center gap-3">
+                              <div className="shrink-0"><ProductTableThumbnail imageUrl={p.image_url} productName={p.name} /></div>
+                              <div className="min-w-0">
+                                <p className="line-clamp-2 font-sans text-sm font-bold leading-5 text-white/90">{p.name}</p>
+                                <span className="mt-1 inline-flex max-w-full truncate rounded bg-white/5 px-1.5 py-0.5 text-[9px] uppercase text-white/40">
+                                  {catalogInfo?.name || pCatalogCode || 'UNKNOWN'}
+                                </span>
+                              </div>
+                            </div>
                           </td>
-                          <td className="px-4 align-middle">
-                            <p className="line-clamp-2 font-sans text-sm font-bold leading-5 text-white/90">{p.name}</p>
-                            <span className="mt-1 inline-flex max-w-full truncate rounded bg-white/5 px-1.5 py-0.5 text-[9px] uppercase text-white/40">
-                              {catalogInfo?.name || pCatalogCode || 'UNKNOWN'}
-                            </span>
+                          <td className="px-3 align-middle">
+                            <p className="truncate font-sans text-[11px] uppercase tracking-wider text-white/50">{p.provider || '-'}</p>
+                            <p className="mt-1 truncate font-mono text-[11px] font-medium uppercase tracking-wider text-[#0084FF]" title={p.code}>{p.code || '-'}</p>
                           </td>
-                          <td className="px-4 align-middle font-sans text-xs uppercase tracking-wider text-white/50">{p.provider || '-'}</td>
-                          <td className="px-4 align-middle font-mono text-[12px] font-medium uppercase tracking-wider text-[#0084FF]">
-                            <span className="block truncate" title={p.code}>{p.code || '-'}</span>
+                          <td className="px-3 text-right">
+                            <p className="text-[9px] uppercase tracking-wider text-white/35">Jual</p>
+                            <p className="truncate font-mono text-xs font-bold text-white">Rp {p.price.toLocaleString()}</p>
+                            <p className="mt-1 truncate text-[10px] text-white/40">Modal {p.base_price != null ? `Rp ${p.base_price.toLocaleString()}` : '—'}</p>
                           </td>
-                          <td className="px-4 text-right">
-                            <p className="font-mono font-bold text-sm text-white">Rp {p.price.toLocaleString()}</p>
-                            {p.base_price && (
-                              <p className="text-[10px] text-white/40 mt-1">Modal: Rp {p.base_price.toLocaleString()}</p>
-                            )}
-                          </td>
-                          <td className="text-center font-mono text-sm text-white/80">
+                          <td className="px-2 text-center font-mono text-sm text-white/80">
                             {p.stock === -1 ? '∞' : p.stock === 0 ? <span className="text-red-400 text-xs font-bold bg-red-500/10 px-2 py-1 rounded-md">KOSONG</span> : p.stock}
                           </td>
-                          <td className="text-center">
-                            <span className={`inline-flex min-h-7 items-center whitespace-nowrap rounded-full border px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.08em] ${
+                          <td className="px-2 text-center">
+                            <div className="flex flex-col items-center gap-1">
+                            <span className={`inline-flex min-h-6 items-center whitespace-nowrap rounded-full border px-2 py-0.5 text-[8px] font-bold uppercase tracking-[0.06em] ${
                               p.is_active
                                 ? 'border-emerald-500/20 bg-emerald-500/[0.08] text-emerald-300'
                                 : 'border-red-500/20 bg-red-500/[0.08] text-red-300'
                             }`}>
                               {p.is_active ? 'PROVIDER ONLINE' : 'PROVIDER OFFLINE'}
                             </span>
-                          </td>
-                          <td className="text-center">
-                            <span className={`inline-flex min-h-7 items-center whitespace-nowrap rounded-full border px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.08em] ${
+                            <span className={`inline-flex min-h-6 items-center whitespace-nowrap rounded-full border px-2 py-0.5 text-[8px] font-bold uppercase tracking-[0.06em] ${
                               p.admin_enabled
                                 ? 'border-sky-500/20 bg-sky-500/[0.08] text-sky-300'
                                 : 'border-amber-500/20 bg-amber-500/[0.08] text-amber-200'
                             }`}>
                               {p.admin_enabled ? 'STORE AKTIF' : 'STORE NONAKTIF'}
                             </span>
+                            </div>
                           </td>
-                          <td className="pr-4 text-right">
+                          <td className="pr-2 text-right">
                             <button
                               type="button"
                               onClick={() => openProductEditor(p)}
@@ -965,7 +970,7 @@ export default function ProductsPage() {
                     })
                   ) : (
                     <tr>
-                      <td colSpan={10} className="py-20 text-center text-white/40 font-mono text-sm">
+                      <td colSpan={7} className="py-20 text-center text-white/40 font-mono text-sm">
                         <AlertTriangle size={40} className="mx-auto mb-4 text-white/20" />
                         Tidak ada produk ditemukan.
                       </td>
@@ -973,6 +978,89 @@ export default function ProductsPage() {
                   )}
                 </tbody>
               </table>
+            </div>
+
+            <div className="lg:hidden">
+              <div className="mb-3 flex items-center justify-between rounded-2xl border border-white/5 bg-black/10 px-4 py-3">
+                <div className="flex items-center gap-3">
+                  <SelectionCheckbox
+                    checked={allDisplayedSelected}
+                    indeterminate={someDisplayedSelected}
+                    disabled={displayedProductIDs.length === 0}
+                    label={allDisplayedSelected ? 'Hapus pilihan semua produk yang sedang tampil' : 'Pilih semua produk yang sedang tampil'}
+                    onChange={toggleAllDisplayedProducts}
+                  />
+                  <span className="text-xs font-semibold text-white/60">Pilih semua yang tampil</span>
+                </div>
+                <span className="font-mono text-[10px] text-white/35">{displayedProducts.length} produk</span>
+              </div>
+
+              <div className="space-y-3">
+                {loading ? (
+                  Array.from({ length: 4 }).map((_, i) => (
+                    <div key={i} className="animate-pulse rounded-2xl border border-white/5 bg-white/[0.025] p-4">
+                      <div className="flex gap-3">
+                        <div className="h-12 w-12 rounded-2xl bg-white/5" />
+                        <div className="flex-1"><div className="mb-2 h-4 w-3/4 rounded bg-white/5" /><div className="h-3 w-1/3 rounded bg-white/5" /></div>
+                      </div>
+                      <div className="mt-4 grid grid-cols-2 gap-3">
+                        {Array.from({ length: 4 }).map((__, j) => <div key={j} className="h-14 rounded-xl bg-white/5" />)}
+                      </div>
+                    </div>
+                  ))
+                ) : displayedProducts.length > 0 ? (
+                  displayedProducts.map((p) => {
+                    const isSelected = selectedItems.includes(p.ID)
+                    const pCatalogCode = p.catalog_cardcode || p.catalog?.cardcode || ''
+                    const catalogInfo = catalogs.find(c => c.cardcode === pCatalogCode)
+
+                    return (
+                      <article key={p.ID} className={`group rounded-2xl border p-4 transition-colors ${isSelected ? 'border-[#0084FF]/25 bg-[#0084FF]/[0.045]' : 'border-white/5 bg-white/[0.025]'}`}>
+                        <div className="flex items-start gap-3">
+                          <div className="pt-3">
+                            <SelectionCheckbox checked={isSelected} label={`${isSelected ? 'Hapus pilihan' : 'Pilih'} ${p.name}`} onChange={() => toggleProductSelection(p.ID)} />
+                          </div>
+                          <ProductTableThumbnail imageUrl={p.image_url} productName={p.name} />
+                          <div className="min-w-0 flex-1">
+                            <h3 className="line-clamp-2 text-sm font-bold leading-5 text-white/90">{p.name}</h3>
+                            <span className="mt-1 inline-flex max-w-full truncate rounded bg-white/5 px-1.5 py-0.5 text-[9px] uppercase text-white/40">{catalogInfo?.name || pCatalogCode || 'UNKNOWN'}</span>
+                          </div>
+                          <button type="button" onClick={() => openProductEditor(p)} aria-label={`Edit ${p.name}`} className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-white/45 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0084FF]/60">
+                            <Edit size={18} />
+                          </button>
+                        </div>
+
+                        <dl className="mt-4 grid grid-cols-2 gap-3 text-xs">
+                          <div className="min-w-0 rounded-xl bg-black/10 p-3">
+                            <dt className="text-[9px] uppercase tracking-wider text-white/35">Provider / SKU</dt>
+                            <dd className="mt-1 truncate uppercase text-white/65">{p.provider || '-'}</dd>
+                            <dd className="mt-1 truncate font-mono text-[10px] text-[#0084FF]" title={p.code}>{p.code || '-'}</dd>
+                          </div>
+                          <div className="min-w-0 rounded-xl bg-black/10 p-3 text-right">
+                            <dt className="text-[9px] uppercase tracking-wider text-white/35">Harga</dt>
+                            <dd className="mt-1 truncate font-mono font-bold text-white">Jual Rp {p.price.toLocaleString()}</dd>
+                            <dd className="mt-1 truncate text-[10px] text-white/40">Modal {p.base_price != null ? `Rp ${p.base_price.toLocaleString()}` : '-'}</dd>
+                          </div>
+                          <div className="rounded-xl bg-black/10 p-3">
+                            <dt className="text-[9px] uppercase tracking-wider text-white/35">Stock</dt>
+                            <dd className="mt-1 font-mono text-white/75">{p.stock === -1 ? '\u221E' : p.stock === 0 ? 'KOSONG' : p.stock}</dd>
+                          </div>
+                          <div className="rounded-xl bg-black/10 p-3">
+                            <dt className="text-[9px] uppercase tracking-wider text-white/35">Status</dt>
+                            <dd className={`mt-1 text-[10px] font-semibold ${p.is_active ? 'text-emerald-300' : 'text-red-300'}`}>Provider {p.is_active ? 'online' : 'offline'}</dd>
+                            <dd className={`mt-1 text-[10px] font-semibold ${p.admin_enabled ? 'text-sky-300' : 'text-amber-200'}`}>Store {p.admin_enabled ? 'aktif' : 'nonaktif'}</dd>
+                          </div>
+                        </dl>
+                      </article>
+                    )
+                  })
+                ) : (
+                  <div className="py-16 text-center font-mono text-sm text-white/40">
+                    <AlertTriangle size={40} className="mx-auto mb-4 text-white/20" />
+                    Tidak ada produk ditemukan.
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </>

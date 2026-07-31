@@ -21,7 +21,7 @@ export default function Navbar ({
   if (pathname.startsWith('/admin')) return null
 
   return (
-    <nav className='fixed left-1/2 top-5 z-30 w-[calc(100%-24px)] max-w-6xl -translate-x-1/2 rounded-full border border-white/[0.08] bg-black/[0.035] px-3 py-2 backdrop-blur-md backdrop-saturate-150 sm:w-[calc(100%-32px)] sm:px-4'>
+    <nav className='aj-frosted-glass fixed left-1/2 top-5 z-30 w-[calc(100%-24px)] max-w-6xl -translate-x-1/2 rounded-full px-3 py-2 sm:w-[calc(100%-32px)] sm:px-4'>
       <div className='flex min-h-11 items-center justify-between gap-2 sm:gap-3'>
         <Link
           href='/'
