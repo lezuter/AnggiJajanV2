@@ -711,7 +711,7 @@ func ManualOrder(c *fiber.Ctx) error {
 
 	// Hitung modal, harga web, dan validasi harga jual
 	capital := math.Round(p.Price)
-	webPrice := math.Round(capital * 1.05)
+	webPrice := models.CalculateSellingPrice(capital)
 
 	sellingPrice := math.Round(req.SellingPrice)
 	if sellingPrice <= 0 {
@@ -1064,7 +1064,10 @@ func Checkout(c *fiber.Ctx) error {
 	rand.Seed(time.Now().UnixNano())
 	invoiceID := fmt.Sprintf("INV-%d-%d", time.Now().UnixNano()/1000000, rand.Intn(1000))
 
-	tripay, err := requestTripay(invoiceID, int(p.Price), req.PaymentMethod, p.Name, req.CustomerPhone)
+	capital := math.Round(p.Price)
+	sellingPrice := models.CalculateSellingPrice(capital)
+
+	tripay, err := requestTripay(invoiceID, int(sellingPrice), req.PaymentMethod, p.Name, req.CustomerPhone)
 	if err != nil || !tripay.Success {
 		reason := "Gagal Request Tripay"
 		if tripay.Message != "" {
@@ -1077,7 +1080,6 @@ func Checkout(c *fiber.Ctx) error {
 		})
 	}
 
-	capital := p.Price / 1.05
 	provider := strings.ToLower(strings.TrimSpace(p.Provider))
 	if provider == "" {
 		provider = "digiflazz"
@@ -1087,9 +1089,9 @@ func Checkout(c *fiber.Ctx) error {
 		InvoiceID:      invoiceID,
 		ProductID:      p.ID,
 		CustomerPhone:  req.CustomerPhone,
-		Amount:         p.Price,
+		Amount:         sellingPrice,
 		Capital:        capital,
-		Profit:         p.Price - capital,
+		Profit:         sellingPrice - capital,
 		Status:         "UNPAID",
 		ProviderStatus: "Waiting Payment",
 		PaymentMethod:  req.PaymentMethod,

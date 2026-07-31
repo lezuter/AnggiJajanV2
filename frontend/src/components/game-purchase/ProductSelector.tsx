@@ -1,12 +1,14 @@
 'use client'
 
 import { useState } from 'react'
+import { getProductSellingPrice } from '@/lib/pricing'
 
 export interface PurchaseProduct {
   ID: number
   name: string
   code: string
   price?: number
+  selling_price?: number
   original_price?: number | null
   stock?: number
   is_active?: boolean
@@ -108,7 +110,7 @@ export default function ProductSelector ({
         <div className='mt-7 grid gap-3 sm:grid-cols-2 xl:grid-cols-3'>
           {products.map(product => {
             const isSelected = selectedProduct?.ID === product.ID
-            const finalPrice = product.price ?? 0
+            const finalPrice = getProductSellingPrice(product)
             const originalPrice = product.original_price ?? 0
             const hasDiscount =
               finalPrice > 0 && originalPrice > finalPrice

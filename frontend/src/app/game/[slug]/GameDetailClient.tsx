@@ -15,6 +15,7 @@ import ProductSelector, {
 } from '@/components/game-purchase/ProductSelector'
 import CyberneticGridShader from '@/components/ui/cybernetic-grid-shader'
 import { findPublicCatalog, PublicCatalog } from '@/data/publicCatalogs'
+import { getProductSellingPrice } from '@/lib/pricing'
 
 type Product = PurchaseProduct
 
@@ -92,7 +93,8 @@ const normalizeProducts = (
       )
     })
     .sort((a, b) => {
-      const priceDifference = (a.price ?? 0) - (b.price ?? 0)
+      const priceDifference =
+        getProductSellingPrice(a) - getProductSellingPrice(b)
 
       if (priceDifference !== 0) {
         return priceDifference
@@ -243,7 +245,7 @@ export default function GameDetailClient ({ slug }: { slug: string }) {
   }, [hasAccountData])
 
   const totalLabel = selectedProduct
-    ? formatIDR(selectedProduct.price)
+    ? formatIDR(getProductSellingPrice(selectedProduct))
     : 'Belum tersedia'
   const canCheckout =
     PURCHASES_ENABLED &&

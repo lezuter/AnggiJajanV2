@@ -1,6 +1,7 @@
 package models
 
 import (
+	"math"
 	"time"
 
 	"gorm.io/gorm"
@@ -47,6 +48,7 @@ type Product struct {
 	Name            string   `json:"name"`
 	Code            string   `gorm:"uniqueIndex" json:"code"`
 	Price           float64  `json:"price"`
+	SellingPrice    float64  `json:"selling_price" gorm:"-"`
 	OriginalPrice   *float64 `json:"original_price" gorm:"column:original_price"`
 	Stock           int      `json:"stock" gorm:"default:0"`
 	IsActive        bool     `json:"is_active" gorm:"default:true;index"` // Status ketersediaan dari provider.
@@ -56,6 +58,22 @@ type Product struct {
 	CatalogCardCode string   `json:"catalog_cardcode" gorm:"column:catalog_cardcode;index"`
 	Catalog         Catalog  `gorm:"foreignKey:CatalogCardCode;references:CardCode" json:"catalog"`
 	Provider        string   `json:"provider" gorm:"default:'digiflazz';index"`
+}
+
+const StorefrontMarkupRate = 0.05
+
+// CalculateSellingPrice is the single source of truth for the public selling
+// price. Price remains the provider capital and SellingPrice is never persisted.
+func CalculateSellingPrice(capital float64) float64 {
+	roundedCapital := math.Round(capital)
+	return math.Round(roundedCapital * (1 + StorefrontMarkupRate))
+}
+
+// AfterFind exposes the calculated selling price in every Product response,
+// including products loaded through Catalog preloads, without adding a DB column.
+func (product *Product) AfterFind(_ *gorm.DB) error {
+	product.SellingPrice = CalculateSellingPrice(product.Price)
+	return nil
 }
 
 // Banner Model

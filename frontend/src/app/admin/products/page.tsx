@@ -19,6 +19,7 @@ import {
 // 🔥 1. IMPORT SATPAM 401
 import { useApi } from '@/hooks/useApi'
 import PendingProductsTable from '@/components/PendingProductsTable'
+import { getProductSellingPrice } from '@/lib/pricing'
 
 // ==========================================
 // INTERFACES & CONSTANTS
@@ -35,6 +36,7 @@ interface Product {
   name: string;
   code: string;
   price: number;
+  selling_price?: number;
   stock: number;
   is_active: boolean;
   admin_enabled: boolean;
@@ -959,7 +961,14 @@ export default function ProductsPage() {
                           </td>
                           <td className="px-3 text-right">
                             <p className="text-[9px] uppercase tracking-wider text-white/35">Jual</p>
-                            <p className="truncate font-mono text-xs font-bold text-white">Rp {Math.round(p.price * 1.05).toLocaleString()}</p>
+                            <p className="truncate font-mono text-xs font-bold text-white">Rp {getProductSellingPrice(p).toLocaleString('id-ID')}</p>
+                            {p.original_price !== null &&
+                              p.original_price !== undefined &&
+                              p.original_price > getProductSellingPrice(p) && (
+                                <p className="mt-1 truncate text-[10px] text-white/35 line-through">
+                                  Normal Rp {p.original_price.toLocaleString('id-ID')}
+                                </p>
+                              )}
                             <p className="mt-1 truncate text-[10px] text-white/40">Modal Rp {p.price.toLocaleString()}</p>
                           </td>
                           <td className="px-2 text-center font-mono text-sm text-white/80">
@@ -1066,7 +1075,14 @@ export default function ProductsPage() {
                           </div>
                           <div className="min-w-0 rounded-xl bg-black/10 p-3 text-right">
                             <dt className="text-[9px] uppercase tracking-wider text-white/35">Harga</dt>
-                            <dd className="mt-1 truncate font-mono font-bold text-white">Jual Rp {Math.round(p.price * 1.05).toLocaleString()}</dd>
+                            <dd className="mt-1 truncate font-mono font-bold text-white">Jual Rp {getProductSellingPrice(p).toLocaleString('id-ID')}</dd>
+                            {p.original_price !== null &&
+                              p.original_price !== undefined &&
+                              p.original_price > getProductSellingPrice(p) && (
+                                <dd className="mt-1 truncate text-[10px] text-white/35 line-through">
+                                  Normal Rp {p.original_price.toLocaleString('id-ID')}
+                                </dd>
+                              )}
                             <dd className="mt-1 truncate text-[10px] text-white/40">Modal Rp {p.price.toLocaleString()}</dd>
                           </div>
                           <div className="rounded-xl bg-black/10 p-3">
