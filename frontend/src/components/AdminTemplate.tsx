@@ -82,7 +82,7 @@ export default function AdminTemplate({
           <div className="glass-shell relative h-full w-full rounded-[36px] overflow-hidden">
             {/* 🔥 KAPSUL BLUR: Sidebar & Halaman dibungkus di sini biar blurnya SAMA RATA 🔥 */}
             <div
-              className={`flex h-full w-full transition-all duration-500 ease-in-out ${isDrawerOpen ? "blur-md brightness-50 pointer-events-none" : "blur-none brightness-100"}`}
+              className={`flex h-full w-full transition-all duration-500 ease-in-out ${isDrawerOpen ? "blur-md brightness-50 pointer-events-none" : ""}`}
             >
               <div className="relative z-10 h-full">
                 <AdminSidebar
