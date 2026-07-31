@@ -2,7 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
-import AdminTemplate from "@/components/AdminTemplate"; 
+import AdminTemplate from "@/components/AdminTemplate";
+
+const normalizePath = (value: string | null) => {
+  if (!value) return "";
+  if (value === "/") return value;
+  return value.replace(/\/+$/, "");
+};
 
 export default function AdminLayout({
   children,
@@ -12,46 +18,56 @@ export default function AdminLayout({
   const router = useRouter();
   const pathname = usePathname();
   const [isAuthorized, setIsAuthorized] = useState(false);
+  const [isMounted, setIsMounted] = useState(false);
 
   useEffect(() => {
-    // 1. AMBIL TOKEN DULU
-    const token = localStorage.getItem("token"); 
+    setIsMounted(true);
+  }, []);
 
-    // 2. KASUS: Udah Login (Ada Token) TAPI maksa buka Halaman Login
-    if (pathname === "/admin/login" && token) {
-      router.push("/admin/dashboard"); // Lempar masuk ke dashboard
+  useEffect(() => {
+    if (!isMounted) return;
+
+    const currentPath = normalizePath(pathname);
+    const isLoginPage = currentPath === "/admin/login";
+    const token = localStorage.getItem("token");
+
+    setIsAuthorized(false);
+
+    if (isLoginPage && token) {
+      router.replace("/admin/dashboard/");
       return;
     }
 
-    // 3. KASUS: Belum Login (Ga Ada Token) TAPI maksa buka Dashboard
-    if (pathname !== "/admin/login" && !token) {
-      router.push("/admin/login"); // Tendang keluar ke login
+    if (!isLoginPage && !token) {
+      router.replace("/admin/login/");
       return;
     }
 
-    // 4. KASUS AMAN:
-    // - Belum login & ada di halaman login (User mau login) -> OK
-    // - Udah login & ada di dashboard (User admin) -> OK
     setIsAuthorized(true);
-
-  }, [pathname, router]);
+  }, [isMounted, pathname, router]);
 
   // Loading State
   if (!isAuthorized) {
-    // Trik: Kalau lagi di halaman login & punya token (lagi proses redirect ke dashboard), 
-    // jangan tampilin apa-apa biar ga nge-glitch form loginnya.
-    return null; 
+    return (
+      <main className="min-h-screen bg-[#15173d] text-white flex items-center justify-center">
+        <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-5 py-4 text-xs font-bold uppercase tracking-[0.2em] text-slate-300 shadow-2xl">
+          Memeriksa sesi admin...
+        </div>
+      </main>
+    );
   }
 
   // Render Halaman Login Polosan
-  if (pathname === "/admin/login") {
+  if (normalizePath(pathname) === "/admin/login") {
     return <main>{children}</main>;
   }
 
   // Render Halaman Admin pake Sidebar
   return (
-    <AdminTemplate>
-      {children}
-    </AdminTemplate>
+    <>
+      {/* 🔥 MESIN 3D ABADI NYALA KHUSUS DI AREA ADMIN 🔥 */}
+
+      <AdminTemplate>{children}</AdminTemplate>
+    </>
   );
 }

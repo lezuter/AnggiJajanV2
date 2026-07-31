@@ -1,0 +1,545 @@
+@keyframes orchid-bloom-drift {
+  0%,
+  100% {
+    transform: translate3d(-2%, -1%, 0) rotate(-2deg) scale(1);
+  }
+
+  50% {
+    transform: translate3d(3%, 2%, 0) rotate(2deg) scale(1.06);
+  }
+}
+
+.orchidTheme[data-theme-demo='orchid'] {
+  --orchid-aubergine: #260d1f;
+  --orchid-aubergine-deep: #180812;
+  --orchid-wine: #45152f;
+  --orchid-magenta: #7a2f57;
+  --orchid-mauve: #a55f79;
+  --orchid-rose: #c98798;
+  --orchid-pearl: #f4e5e2;
+  --orchid-surface-soft: rgba(100, 42, 66, 0.24);
+  --orchid-surface: rgba(91, 32, 61, 0.44);
+  --orchid-surface-strong: rgba(66, 21, 47, 0.7);
+  --orchid-surface-accent: rgba(175, 87, 117, 0.66);
+  --orchid-border-soft: rgba(239, 205, 207, 0.1);
+  --orchid-border: rgba(244, 216, 215, 0.17);
+  --orchid-border-strong: rgba(247, 224, 220, 0.27);
+  --orchid-text: #f9eeeb;
+  --orchid-text-muted: rgba(236, 207, 207, 0.68);
+  --orchid-shadow-soft: 0 16px 42px rgba(28, 5, 18, 0.24);
+  --orchid-shadow:
+    0 30px 84px rgba(28, 5, 18, 0.32),
+    0 8px 28px rgba(114, 37, 74, 0.09);
+
+  position: relative;
+  isolation: isolate;
+  width: 100%;
+  min-height: 100vh;
+  overflow-x: clip;
+  color: var(--orchid-text);
+  background:
+    radial-gradient(ellipse at 12% 8%, rgba(175, 86, 118, 0.24), transparent 27%),
+    radial-gradient(ellipse at 88% 19%, rgba(126, 42, 82, 0.2), transparent 31%),
+    radial-gradient(ellipse at 54% 66%, rgba(108, 39, 73, 0.15), transparent 37%),
+    linear-gradient(152deg, #46162f 0%, var(--orchid-aubergine) 42%, #301022 72%, var(--orchid-aubergine-deep) 100%);
+}
+
+.orchidTheme[data-theme-demo='orchid']::before {
+  position: fixed;
+  inset: -22%;
+  z-index: 0;
+  background:
+    radial-gradient(ellipse at 24% 24%, rgba(191, 103, 131, 0.15), transparent 22%),
+    radial-gradient(ellipse at 76% 42%, rgba(132, 44, 84, 0.12), transparent 27%),
+    radial-gradient(ellipse at 48% 84%, rgba(169, 74, 106, 0.1), transparent 24%);
+  filter: blur(82px);
+  content: '';
+  pointer-events: none;
+  animation: orchid-bloom-drift 22s ease-in-out infinite;
+}
+
+.orchidTheme[data-theme-demo='orchid']::after {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  background-image:
+    radial-gradient(circle, rgba(248, 226, 219, 0.12) 0.55px, transparent 0.75px),
+    linear-gradient(118deg, transparent 22%, rgba(240, 202, 202, 0.025) 48%, transparent 74%);
+  background-size:
+    5px 5px,
+    100% 100%;
+  opacity: 0.24;
+  mix-blend-mode: soft-light;
+  mask-image: linear-gradient(to bottom, black, rgba(0, 0, 0, 0.35) 72%, transparent);
+  -webkit-mask-image: linear-gradient(to bottom, black, rgba(0, 0, 0, 0.35) 72%, transparent);
+  content: '';
+  pointer-events: none;
+}
+
+.orchidTheme[data-theme-demo='orchid'] .pageContent {
+  position: relative;
+  z-index: 2;
+  background: transparent !important;
+}
+
+.orchidTheme[data-theme-demo='orchid'] .pageContent > :global(div),
+.orchidTheme[data-theme-demo='orchid'] :global(main) {
+  background: transparent !important;
+}
+
+/* Replace the production cyber environment with the Orchid atmosphere. */
+.orchidTheme[data-theme-demo='orchid']
+  :global(main)
+  > :global(div[class*='h-[calc(100svh+220px)]']),
+.orchidTheme[data-theme-demo='orchid']
+  :global(main)
+  > :global(div[class*='top-[72vh]']) {
+  display: none !important;
+}
+
+.orchidTheme[data-theme-demo='orchid'] :global(:focus-visible) {
+  outline-color: var(--orchid-rose);
+}
+
+.orchidTheme[data-theme-demo='orchid'] .demoIndicator {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  max-width: calc(100vw - 2rem);
+  padding: 0.5rem 0.6rem 0.5rem 0.85rem;
+  border: 1px solid var(--orchid-border);
+  border-radius: 9999px;
+  background:
+    radial-gradient(circle at 12% 0%, rgba(244, 218, 213, 0.13), transparent 38%),
+    linear-gradient(135deg, rgba(104, 40, 68, 0.82), rgba(48, 15, 35, 0.86));
+  box-shadow:
+    0 16px 48px rgba(30, 5, 18, 0.34),
+    inset 0 1px 0 rgba(255, 235, 229, 0.13);
+  backdrop-filter: blur(17px) saturate(130%);
+  -webkit-backdrop-filter: blur(17px) saturate(130%);
+}
+
+.orchidTheme[data-theme-demo='orchid'] .demoLabel {
+  white-space: nowrap;
+  font-family: var(--font-ibm-plex-mono), monospace;
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  color: rgba(242, 215, 210, 0.66);
+  text-transform: uppercase;
+}
+
+.orchidTheme[data-theme-demo='orchid'] .backLink {
+  display: inline-flex;
+  min-height: 2rem;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+  border: 1px solid rgba(243, 216, 214, 0.18);
+  border-radius: 9999px;
+  background: rgba(191, 111, 132, 0.14);
+  padding-inline: 0.8rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: var(--orchid-text);
+  box-shadow: inset 0 1px 0 rgba(255, 237, 232, 0.12);
+  transition:
+    background-color 240ms ease,
+    border-color 240ms ease;
+}
+
+.orchidTheme[data-theme-demo='orchid'] .backLink:hover {
+  border-color: rgba(248, 228, 223, 0.3);
+  background: rgba(202, 124, 145, 0.22);
+}
+
+/* Navbar: warm satin, not glass or violet chrome. */
+.orchidTheme[data-theme-demo='orchid'] :global(nav.fixed) {
+  border-color:
+    rgba(245, 220, 216, 0.2) rgba(223, 184, 187, 0.07)
+    rgba(205, 159, 169, 0.05) rgba(232, 199, 198, 0.11) !important;
+  background:
+    radial-gradient(ellipse at 8% -42%, rgba(240, 205, 201, 0.12), transparent 38%),
+    linear-gradient(125deg, rgba(91, 31, 60, 0.82), rgba(43, 13, 32, 0.86)) !important;
+  box-shadow:
+    0 20px 56px rgba(29, 4, 17, 0.28),
+    inset 0 1px 0 rgba(255, 235, 229, 0.12) !important;
+  backdrop-filter: blur(18px) saturate(128%) !important;
+  -webkit-backdrop-filter: blur(18px) saturate(128%) !important;
+}
+
+.orchidTheme[data-theme-demo='orchid'] :global(nav.fixed input[type='search']),
+.orchidTheme[data-theme-demo='orchid'] :global(nav.fixed button) {
+  border-color: rgba(235, 204, 203, 0.12) !important;
+  background:
+    linear-gradient(135deg, rgba(151, 75, 102, 0.11), rgba(39, 10, 29, 0.43)) !important;
+  color: var(--orchid-text) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 235, 228, 0.08),
+    0 9px 24px rgba(28, 4, 16, 0.16) !important;
+  backdrop-filter: blur(14px) saturate(125%) !important;
+  -webkit-backdrop-filter: blur(14px) saturate(125%) !important;
+}
+
+.orchidTheme[data-theme-demo='orchid']
+  :global(nav.fixed input[type='search']::placeholder) {
+  color: rgba(229, 198, 198, 0.46);
+}
+
+/* Hero: rich velvet-satin surface with localized rose bloom. */
+.orchidTheme[data-theme-demo='orchid']
+  :global(article[aria-roledescription='slide']) {
+  border-color:
+    rgba(245, 220, 216, 0.26) rgba(219, 177, 183, 0.08)
+    rgba(198, 145, 158, 0.055) rgba(231, 196, 195, 0.13) !important;
+  background:
+    radial-gradient(ellipse at 9% 0%, rgba(226, 178, 177, 0.15), transparent 38%),
+    radial-gradient(ellipse at 88% 82%, rgba(143, 48, 86, 0.1), transparent 29%),
+    linear-gradient(145deg, rgba(103, 36, 67, 0.84), rgba(46, 13, 35, 0.89) 74%) !important;
+  box-shadow:
+    0 34px 92px rgba(27, 4, 16, 0.35),
+    0 10px 34px rgba(108, 31, 65, 0.08),
+    inset 0 1px 0 rgba(255, 232, 225, 0.14) !important;
+  backdrop-filter: blur(18px) saturate(132%) !important;
+  -webkit-backdrop-filter: blur(18px) saturate(132%) !important;
+}
+
+.orchidTheme[data-theme-demo='orchid']
+  :global(article[aria-roledescription='slide']:not([aria-current='true'])) {
+  border-color:
+    rgba(231, 198, 197, 0.15) rgba(205, 157, 166, 0.05)
+    rgba(188, 134, 150, 0.035) rgba(216, 174, 180, 0.08) !important;
+  background:
+    radial-gradient(ellipse at 16% 0%, rgba(187, 124, 138, 0.075), transparent 33%),
+    linear-gradient(160deg, rgba(72, 23, 50, 0.9), rgba(30, 8, 23, 0.93)) !important;
+}
+
+.orchidTheme[data-theme-demo='orchid']
+  :global(article[aria-roledescription='slide'])
+  :global([class*='mix-blend-screen']) {
+  background-image:
+    radial-gradient(
+      ellipse at 12% 2%,
+      rgba(234, 195, 187, 0.13),
+      rgba(169, 94, 115, 0.035) 39%,
+      transparent 65%
+    ),
+    radial-gradient(
+      ellipse at 92% 104%,
+      rgba(171, 65, 103, 0.075),
+      transparent 43%
+    ) !important;
+}
+
+.orchidTheme[data-theme-demo='orchid']
+  :global(article[aria-roledescription='slide'])
+  :global([class*='rounded-2xl'][class*='backdrop-blur-md']) {
+  border-color: rgba(237, 208, 204, 0.14) !important;
+  background:
+    radial-gradient(circle at 12% 0%, rgba(230, 196, 190, 0.09), transparent 40%),
+    linear-gradient(135deg, rgba(120, 53, 78, 0.34), rgba(43, 13, 32, 0.45)) !important;
+  box-shadow:
+    0 14px 34px rgba(28, 4, 17, 0.19),
+    inset 0 1px 0 rgba(255, 235, 229, 0.1) !important;
+}
+
+.orchidTheme[data-theme-demo='orchid']
+  :global(article[aria-roledescription='slide'])
+  :global(a[class*='bg-white']) {
+  border: 1px solid rgba(255, 235, 226, 0.4);
+  background: linear-gradient(135deg, #f1ddd5, #d4939f 58%, #b96488) !important;
+  color: #3b1328 !important;
+  box-shadow:
+    0 14px 36px rgba(48, 8, 27, 0.25),
+    0 5px 18px rgba(190, 101, 130, 0.18),
+    inset 0 1px 0 rgba(255, 251, 246, 0.58) !important;
+}
+
+.orchidTheme[data-theme-demo='orchid']
+  :global(article[aria-roledescription='slide'])
+  :global(a[class*='bg-white']:hover) {
+  background: linear-gradient(135deg, #f7e9e2, #dfa7af 58%, #c97898) !important;
+}
+
+.orchidTheme[data-theme-demo='orchid']
+  :global([aria-roledescription='carousel'])
+  > :global(div[class*='bottom-4'])
+  :global(button) {
+  background: var(--orchid-pearl) !important;
+  box-shadow: 0 0 14px rgba(211, 144, 156, 0.24);
+}
+
+/* Filters */
+.orchidTheme[data-theme-demo='orchid']
+  :global([aria-label='Filter katalog'] button[aria-pressed]) {
+  border-color: var(--orchid-border-soft) !important;
+  color: var(--orchid-text-muted) !important;
+  box-shadow:
+    0 12px 32px rgba(28, 4, 17, 0.2),
+    inset 0 1px 0 rgba(255, 233, 226, 0.06) !important;
+}
+
+.orchidTheme[data-theme-demo='orchid']
+  :global([aria-label='Filter katalog'] button[aria-pressed])
+  > :global(span[aria-hidden='true']) {
+  background:
+    linear-gradient(135deg, rgba(122, 52, 78, 0.23), rgba(46, 13, 34, 0.36)) !important;
+}
+
+.orchidTheme[data-theme-demo='orchid']
+  :global([aria-label='Filter katalog'] button[aria-pressed='true']) {
+  border-color: rgba(246, 218, 214, 0.28) !important;
+  color: var(--orchid-text) !important;
+  box-shadow:
+    0 16px 38px rgba(32, 5, 19, 0.23),
+    0 4px 18px rgba(173, 78, 111, 0.1),
+    inset 0 1px 0 rgba(255, 239, 233, 0.15) !important;
+}
+
+.orchidTheme[data-theme-demo='orchid']
+  :global([aria-label='Filter katalog'] button[aria-pressed='true'])
+  > :global(span[aria-hidden='true']) {
+  background:
+    radial-gradient(circle at 15% 0%, rgba(241, 210, 202, 0.17), transparent 42%),
+    linear-gradient(135deg, rgba(165, 76, 106, 0.56), rgba(104, 38, 73, 0.55)) !important;
+}
+
+/* Catalog cards */
+.orchidTheme[data-theme-demo='orchid'] :global(main a[href^='/game/']) {
+  border-color: rgba(235, 200, 200, 0.12) !important;
+  background: rgba(54, 16, 39, 0.4) !important;
+  box-shadow:
+    0 20px 52px rgba(28, 4, 17, 0.25),
+    inset 0 1px 0 rgba(255, 228, 222, 0.06) !important;
+}
+
+.orchidTheme[data-theme-demo='orchid'] :global(main a[href^='/game/']:hover),
+.orchidTheme[data-theme-demo='orchid']
+  :global(main a[href^='/game/']:focus-visible) {
+  border-color: rgba(245, 218, 213, 0.28) !important;
+  box-shadow:
+    0 26px 64px rgba(28, 4, 17, 0.3),
+    0 9px 28px rgba(155, 59, 94, 0.08),
+    inset 0 1px 0 rgba(255, 235, 227, 0.11) !important;
+}
+
+.orchidTheme[data-theme-demo='orchid']
+  :global(main a[href^='/game/'])
+  > :global(div[role='img']) {
+  background: linear-gradient(155deg, rgba(69, 23, 48, 0.76), rgba(27, 7, 20, 0.9)) !important;
+}
+
+.orchidTheme[data-theme-demo='orchid']
+  :global(main a[href^='/game/'])
+  > :global(div[class*='bg-[linear-gradient(to_top']) {
+  background-image: linear-gradient(
+    to top,
+    rgba(54, 14, 39, 0.88),
+    rgba(103, 35, 69, 0.36) 42%,
+    transparent 74%
+  ) !important;
+}
+
+.orchidTheme[data-theme-demo='orchid']
+  :global(main a[href^='/game/'])
+  > :global(div[class*='h-[82px]']) {
+  background:
+    radial-gradient(circle at 14% 0%, rgba(231, 195, 187, 0.12), transparent 40%),
+    linear-gradient(145deg, rgba(113, 45, 75, 0.52), rgba(44, 12, 33, 0.61)) !important;
+  box-shadow:
+    0 -14px 34px rgba(31, 5, 19, 0.22),
+    inset 0 1px 0 rgba(255, 229, 222, 0.1) !important;
+  backdrop-filter: blur(13px) saturate(128%) !important;
+  -webkit-backdrop-filter: blur(13px) saturate(128%) !important;
+}
+
+.orchidTheme[data-theme-demo='orchid'] :global(.catalog-card-shine) {
+  background: linear-gradient(
+    90deg,
+    transparent 34%,
+    rgba(181, 99, 125, 0.08) 41%,
+    rgba(248, 224, 215, 0.42) 50%,
+    rgba(179, 81, 117, 0.12) 58%,
+    transparent 66%
+  ) !important;
+}
+
+.orchidTheme[data-theme-demo='orchid'] :global(section button[aria-expanded]) {
+  border-color: var(--orchid-border) !important;
+  background:
+    radial-gradient(circle at 14% 0%, rgba(235, 202, 196, 0.1), transparent 40%),
+    linear-gradient(135deg, rgba(124, 53, 82, 0.46), rgba(48, 14, 36, 0.52)) !important;
+  color: var(--orchid-text) !important;
+  box-shadow:
+    var(--orchid-shadow-soft),
+    inset 0 1px 0 rgba(255, 231, 224, 0.1) !important;
+}
+
+/* Suggestion banner */
+.orchidTheme[data-theme-demo='orchid']
+  :global(section[aria-labelledby='catalog-suggestion-title']) {
+  border-color:
+    rgba(243, 216, 212, 0.22) rgba(220, 181, 184, 0.075)
+    rgba(198, 146, 158, 0.05) rgba(230, 195, 194, 0.12) !important;
+  background:
+    radial-gradient(ellipse at 8% 12%, rgba(212, 151, 153, 0.14), transparent 33%),
+    radial-gradient(ellipse at 94% 110%, rgba(139, 42, 83, 0.07), transparent 29%),
+    linear-gradient(145deg, rgba(91, 31, 60, 0.82), rgba(40, 11, 30, 0.87)) !important;
+  box-shadow:
+    var(--orchid-shadow),
+    inset 0 1px 0 rgba(255, 231, 224, 0.13) !important;
+  backdrop-filter: blur(18px) saturate(130%) !important;
+  -webkit-backdrop-filter: blur(18px) saturate(130%) !important;
+}
+
+.orchidTheme[data-theme-demo='orchid']
+  :global(section[aria-labelledby='catalog-suggestion-title'])
+  > :global(div[aria-hidden='true']) {
+  background-image:
+    radial-gradient(ellipse at 9% 20%, rgba(202, 127, 141, 0.11), transparent 43%),
+    radial-gradient(ellipse at 96% 106%, rgba(132, 36, 75, 0.06), transparent 37%) !important;
+}
+
+.orchidTheme[data-theme-demo='orchid']
+  :global(section[aria-labelledby='catalog-suggestion-title'])
+  :global(a) {
+  border-color: rgba(246, 222, 216, 0.25) !important;
+  background: linear-gradient(135deg, rgba(193, 116, 137, 0.27), rgba(113, 45, 78, 0.35)) !important;
+  box-shadow:
+    0 14px 38px rgba(29, 4, 17, 0.22),
+    inset 0 1px 0 rgba(255, 235, 228, 0.15) !important;
+}
+
+.orchidTheme[data-theme-demo='orchid']
+  :global(section[aria-labelledby='catalog-suggestion-title'])
+  :global(#box-side stop),
+.orchidTheme[data-theme-demo='orchid']
+  :global(section[aria-labelledby='catalog-suggestion-title'])
+  :global(#glass-lens stop) {
+  stop-color: rgba(196, 111, 137, 0.22) !important;
+}
+
+.orchidTheme[data-theme-demo='orchid']
+  :global(section[aria-labelledby='catalog-suggestion-title'])
+  :global([fill*='59,130,246']),
+.orchidTheme[data-theme-demo='orchid']
+  :global(section[aria-labelledby='catalog-suggestion-title'])
+  :global([fill*='168,85,247']) {
+  fill: rgba(166, 65, 104, 0.1) !important;
+}
+
+/* Footer */
+.orchidTheme[data-theme-demo='orchid'] :global(.cinematic-footer-wrapper) {
+  --footer-background: #180812;
+  --footer-foreground: #f9eeeb;
+  --footer-muted: rgba(233, 200, 200, 0.6);
+  --footer-border: rgba(236, 204, 202, 0.12);
+
+  background:
+    radial-gradient(ellipse at 18% 22%, rgba(150, 60, 92, 0.13), transparent 29%),
+    radial-gradient(ellipse at 86% 70%, rgba(116, 33, 72, 0.08), transparent 27%),
+    linear-gradient(145deg, #351025, #180812 72%) !important;
+}
+
+.orchidTheme[data-theme-demo='orchid'] :global(.footer-aurora) {
+  background: radial-gradient(
+    ellipse,
+    rgba(185, 101, 124, 0.11),
+    rgba(115, 40, 75, 0.04) 41%,
+    transparent 68%
+  ) !important;
+}
+
+.orchidTheme[data-theme-demo='orchid'] :global(.footer-glass-surface) {
+  border-color:
+    rgba(241, 215, 211, 0.19) rgba(217, 177, 181, 0.06)
+    rgba(195, 142, 155, 0.04) rgba(227, 193, 191, 0.1) !important;
+  background:
+    radial-gradient(ellipse at 9% 0%, rgba(223, 177, 171, 0.11), transparent 37%),
+    linear-gradient(145deg, rgba(82, 27, 56, 0.8), rgba(35, 9, 27, 0.86)) !important;
+  box-shadow:
+    0 34px 88px -38px rgba(24, 3, 14, 0.74),
+    inset 0 1px 0 rgba(255, 229, 222, 0.11) !important;
+  backdrop-filter: blur(18px) saturate(128%) !important;
+  -webkit-backdrop-filter: blur(18px) saturate(128%) !important;
+}
+
+.orchidTheme[data-theme-demo='orchid'] :global(.footer-glass-pill) {
+  border-color: var(--orchid-border-soft) !important;
+  background: linear-gradient(135deg, rgba(134, 57, 86, 0.27), rgba(47, 13, 35, 0.4)) !important;
+  box-shadow:
+    0 12px 30px -12px rgba(24, 3, 14, 0.58),
+    inset 0 1px 0 rgba(255, 229, 222, 0.09) !important;
+}
+
+.orchidTheme[data-theme-demo='orchid'] :global(.footer-glass-pill:hover) {
+  border-color: var(--orchid-border-strong) !important;
+  background: linear-gradient(135deg, rgba(165, 79, 107, 0.36), rgba(74, 22, 52, 0.44)) !important;
+}
+
+.orchidTheme[data-theme-demo='orchid']
+  :global(.cinematic-footer-wrapper span[class*='rounded-full']) {
+  border-color: var(--orchid-border-soft) !important;
+  background: rgba(126, 51, 81, 0.17) !important;
+  color: rgba(239, 213, 208, 0.72) !important;
+}
+
+.orchidTheme[data-theme-demo='orchid']
+  :global(.cinematic-footer-wrapper)
+  > :global(div[class*='-rotate-[3deg]']) {
+  border-color: rgba(239, 209, 205, 0.15) !important;
+  background:
+    radial-gradient(ellipse at 10% 0%, rgba(226, 184, 177, 0.08), transparent 30%),
+    linear-gradient(90deg, rgba(76, 22, 51, 0.95), rgba(39, 9, 29, 0.96)) !important;
+  box-shadow:
+    0 18px 54px rgba(25, 3, 14, 0.38),
+    inset 0 1px 0 rgba(255, 230, 223, 0.09) !important;
+}
+
+.orchidTheme[data-theme-demo='orchid']
+  :global(.cinematic-footer-wrapper)
+  :global([class*='border-white/[0.09]']) {
+  border-color: rgba(225, 187, 188, 0.07) !important;
+}
+
+.orchidTheme[data-theme-demo='orchid']
+  :global(.cinematic-footer-wrapper)
+  :global([class*='hover:bg-white/[0.18]']:hover) {
+  background: rgba(166, 75, 105, 0.18) !important;
+}
+
+.orchidTheme[data-theme-demo='orchid']
+  :global(.cinematic-footer-wrapper)
+  :global([style*='grid-template-columns']) {
+  opacity: 0.2;
+}
+
+@media (max-width: 639px) {
+  .orchidTheme[data-theme-demo='orchid'] .demoIndicator {
+    right: auto;
+    left: 0.75rem;
+    bottom: 0.75rem;
+    width: auto;
+    max-width: calc(100vw - 1.5rem);
+    padding: 0.4rem;
+  }
+
+  .orchidTheme[data-theme-demo='orchid'] .demoLabel {
+    display: none;
+  }
+
+  .orchidTheme[data-theme-demo='orchid'] .backLink {
+    padding-inline: 0.65rem;
+    font-size: 0.625rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .orchidTheme[data-theme-demo='orchid']::before {
+    animation: none;
+  }
+}

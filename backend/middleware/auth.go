@@ -45,6 +45,14 @@ func AuthRequired(c *fiber.Ctx) error {
 		return c.Status(401).JSON(fiber.Map{"error": "Token Expired atau Tidak Valid"})
 	}
 
+	// 🔥 [BARU] EKSTRAK DATA DARI TOKEN DAN SIMPAN KE CONTEXT (c.Locals)
+	if claims, ok := token.Claims.(jwt.MapClaims); ok {
+		// Asumsi di controller Login lu nyimpen ID dengan key "user_id"
+		// Kalau di Login lu pakenya "id", ganti aja string di bawah ini
+		c.Locals("user_id", claims["user_id"])
+		c.Locals("role", claims["role"]) // Sekalian simpan role biar gampang buat otorisasi RBAC nanti
+	}
+
 	// Kalau aman, lanjut ke controller berikutnya
 	return c.Next()
 }

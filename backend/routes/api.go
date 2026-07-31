@@ -22,6 +22,7 @@ func SetupRoutes(app *fiber.App) {
 	api.Get("/banners", controllers.GetPublicBanners)
 	api.Post("/checkout", controllers.Checkout)
 	api.Post("/callback", controllers.TripayCallbackHandler)
+	api.Post("/webhook/digiflazz", controllers.DigiflazzWebhookHandler)
 	api.Post("/search-order", controllers.SearchOrder)
 	api.Post("/check-account", controllers.CheckAccount)
 	api.Get("/transaction/:invoice", controllers.CheckTransactionStatus)
@@ -43,10 +44,10 @@ func SetupRoutes(app *fiber.App) {
 
 	// PRODUCT
 	admin.Post("/products/sync/:provider", controllers.SyncAllProducts)
+	admin.Patch("/products/bulk", controllers.BulkUpdateProducts)
 	admin.Put("/products/:id/image", controllers.UpdateProductImage)
 	// Route CRUD Biasa
 	admin.Put("/products/:id", controllers.UpdateProduct)
-	admin.Delete("/products/:id", controllers.DeleteProduct)
 
 	// BANNER
 	admin.Get("/banners", controllers.GetAdminBanners)     // Buat Admin liat list
@@ -56,10 +57,19 @@ func SetupRoutes(app *fiber.App) {
 
 	// TRANSACTION
 	admin.Get("/transactions", controllers.GetTransactions)
+	admin.Get("/manual-orders/running", controllers.GetRunningManualOrders)
+	admin.Get("/manual-order/:id/status", controllers.GetManualOrderStatus)
 	admin.Post("/manual-order", controllers.ManualOrder)
+	admin.Post("/manual-order/:id/execute", controllers.ExecuteManualOrderProvider)
+	admin.Post("/manual-order/:id/check-provider-status", controllers.CheckManualOrderProviderStatus)
+	admin.Post("/transactions/:id/retry", controllers.RetryTransaction)
 
 	// SETTINGS
 	admin.Get("/settings", controllers.GetSettings)
 	admin.Put("/settings", controllers.UpdateSettings)
+
+	// PENDING PRODUCTS (Staging Area)
+	admin.Get("/products/pending", controllers.GetPendingProducts)
+	admin.Post("/products/approve", controllers.ApprovePendingProduct)
 
 }

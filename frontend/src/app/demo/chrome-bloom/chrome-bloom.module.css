@@ -1,0 +1,864 @@
+@keyframes cb-reflection-drift {
+  0%,
+  100% {
+    transform: translate3d(-5%, -2%, 0) rotate(-8deg);
+    opacity: 0.35;
+  }
+
+  50% {
+    transform: translate3d(7%, 3%, 0) rotate(-3deg);
+    opacity: 0.62;
+  }
+}
+
+@keyframes cb-sheen-pass {
+  0%,
+  18% {
+    opacity: 0;
+    transform: translate3d(-135%, 0, 0) skewX(-18deg);
+  }
+
+  42% {
+    opacity: 0.55;
+  }
+
+  72%,
+  100% {
+    opacity: 0;
+    transform: translate3d(235%, 0, 0) skewX(-18deg);
+  }
+}
+
+.chromeBloomTheme[data-theme-demo='chrome-bloom'] {
+  --cb-bg-deep: #171319;
+  --cb-bg-plum: #2b232c;
+  --cb-surface-soft: rgba(91, 80, 90, 0.2);
+  --cb-surface: rgba(55, 46, 55, 0.56);
+  --cb-surface-strong: rgba(34, 28, 35, 0.78);
+  --cb-pink-chrome-base: #8d6475;
+  --cb-pink-chrome-light: #c2a0ae;
+  --cb-pink-chrome-dark: #4f3d46;
+  --cb-pink-chrome-reflection: #a9798d;
+  --cb-silver-chrome-light: #e9e6ea;
+  --cb-silver-chrome-mid: #aaa6ad;
+  --cb-silver-chrome-dark: #555159;
+  --cb-pearl: #f3f0f3;
+  --cb-rose-muted: #9d7888;
+  --cb-border-soft: rgba(226, 222, 227, 0.13);
+  --cb-shadow:
+    0 30px 90px rgba(14, 11, 15, 0.38),
+    0 12px 38px rgba(105, 73, 88, 0.08);
+  --cb-text: #f5f1f4;
+  --cb-text-muted: rgba(225, 217, 224, 0.67);
+  --cb-pink-chrome:
+    radial-gradient(circle at 21% -70%, rgba(255, 255, 255, 0.42) 0%, transparent 29%),
+    linear-gradient(
+      116deg,
+      #464248 0%,
+      #615a62 20%,
+      #8d7883 31%,
+      #c2b8be 34%,
+      #7c6d75 38%,
+      #504b51 57%,
+      #765f6a 70%,
+      #aaa1a7 77%,
+      #d4cfd3 79%,
+      #777178 83%,
+      #454247 100%
+    );
+  --cb-silver-chrome:
+    radial-gradient(circle at 24% -72%, rgba(255, 255, 255, 0.62) 0%, transparent 31%),
+    linear-gradient(
+      113deg,
+      #4d4950 0%,
+      #77737a 19%,
+      #b8b4ba 29%,
+      #dedbe0 32%,
+      #8d8990 36%,
+      #5d5960 54%,
+      #98939a 69%,
+      #c5c1c6 75%,
+      #e8e5e9 78%,
+      #858188 82%,
+      #504c53 100%
+    );
+  --cb-balanced-chrome:
+    radial-gradient(circle at 19% -72%, rgba(255, 255, 255, 0.46) 0%, transparent 29%),
+    linear-gradient(
+      106deg,
+      transparent 0%,
+      transparent 27%,
+      rgba(247, 243, 246, 0.25) 30%,
+      transparent 33%,
+      transparent 100%
+    ),
+    linear-gradient(
+      117deg,
+      #454249 0%,
+      #6b6870 19%,
+      #929097 30%,
+      #aaa7ad 36%,
+      #79757d 43%,
+      #555159 56%,
+      #836c77 68%,
+      #969097 76%,
+      #b4b0b5 79%,
+      #767279 83%,
+      #454249 100%
+    );
+  --cb-balanced-chrome-hover:
+    radial-gradient(circle at 23% -68%, rgba(255, 255, 255, 0.58) 0%, transparent 30%),
+    linear-gradient(
+      106deg,
+      transparent 0%,
+      transparent 31%,
+      rgba(255, 252, 254, 0.52) 34%,
+      transparent 37%,
+      transparent 100%
+    ),
+    linear-gradient(
+      117deg,
+      #4c4850 0%,
+      #77737b 19%,
+      #a8a4ab 30%,
+      #cbc8cd 36%,
+      #848088 43%,
+      #5c5860 56%,
+      #89717c 68%,
+      #aaa4ab 76%,
+      #d5d1d6 79%,
+      #817c84 83%,
+      #4b4850 100%
+    );
+
+  position: relative;
+  isolation: isolate;
+  width: 100%;
+  min-height: 100vh;
+  overflow-x: clip;
+  color: var(--cb-text);
+  background:
+    radial-gradient(ellipse at 12% 4%, rgba(142, 110, 124, 0.12), transparent 29%),
+    radial-gradient(ellipse at 86% 22%, rgba(190, 187, 195, 0.11), transparent 32%),
+    linear-gradient(155deg, #342c35 0%, var(--cb-bg-plum) 36%, #211d23 69%, var(--cb-bg-deep) 100%);
+}
+
+.chromeBloomTheme[data-theme-demo='chrome-bloom']::after {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  background-image:
+    radial-gradient(circle, rgba(242, 237, 241, 0.12) 0.5px, transparent 0.75px),
+    linear-gradient(118deg, transparent 22%, rgba(213, 203, 211, 0.024) 49%, transparent 73%);
+  background-size:
+    5px 5px,
+    100% 100%;
+  opacity: 0.18;
+  mix-blend-mode: soft-light;
+  content: '';
+  pointer-events: none;
+}
+
+.chromeBloomTheme[data-theme-demo='chrome-bloom'] .shaderLayer {
+  position: fixed;
+  inset: 0 0 auto;
+  z-index: 1;
+  height: min(1120px, calc(100svh + 220px));
+  min-height: 860px;
+  overflow: hidden;
+  pointer-events: none;
+  mask-image: linear-gradient(to bottom, black 0%, black 48%, rgba(0, 0, 0, 0.48) 72%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, black 0%, black 48%, rgba(0, 0, 0, 0.48) 72%, transparent 100%);
+}
+
+.chromeBloomTheme[data-theme-demo='chrome-bloom'] .shaderCanvas {
+  z-index: 0;
+  opacity: 0.36;
+  mix-blend-mode: screen;
+}
+
+.chromeBloomTheme[data-theme-demo='chrome-bloom'] .shaderReflection {
+  position: absolute;
+  inset: -26% -18%;
+  z-index: 1;
+  background:
+    radial-gradient(ellipse at 19% 28%, rgba(153, 118, 133, 0.12), transparent 23%),
+    radial-gradient(ellipse at 76% 18%, rgba(211, 207, 215, 0.15), transparent 25%),
+    radial-gradient(ellipse at 62% 71%, rgba(128, 99, 112, 0.075), transparent 29%);
+  filter: blur(70px);
+  animation: cb-reflection-drift 20s ease-in-out infinite;
+}
+
+.chromeBloomTheme[data-theme-demo='chrome-bloom'] .shaderFade {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  background:
+    radial-gradient(circle at 50% 30%, transparent 0%, rgba(21, 16, 22, 0.1) 52%, rgba(21, 16, 22, 0.52) 100%),
+    linear-gradient(to bottom, transparent 52%, rgba(24, 20, 25, 0.58) 79%, var(--cb-bg-deep) 100%);
+}
+
+.chromeBloomTheme[data-theme-demo='chrome-bloom'] .pageContent {
+  position: relative;
+  z-index: 2;
+  background: transparent !important;
+}
+
+.chromeBloomTheme[data-theme-demo='chrome-bloom'] .pageContent > :global(div),
+.chromeBloomTheme[data-theme-demo='chrome-bloom'] :global(main) {
+  background: transparent !important;
+}
+
+/* The production shader is replaced by the palette-safe demo variant. */
+.chromeBloomTheme[data-theme-demo='chrome-bloom']
+  :global(main)
+  > :global(div[class*='h-[calc(100svh+220px)]']) {
+  display: none !important;
+}
+
+/* Preserve and recolor the production Framer Motion ambient background. */
+.chromeBloomTheme[data-theme-demo='chrome-bloom']
+  :global(main)
+  > :global(div[class*='top-[72vh]']) {
+  z-index: -1 !important;
+}
+
+.chromeBloomTheme[data-theme-demo='chrome-bloom']
+  :global(main)
+  > :global(div[class*='top-[72vh]'])
+  > :global(div:first-child) {
+  background-image: radial-gradient(
+    circle,
+    rgba(170, 112, 137, 0.14),
+    rgba(116, 75, 94, 0.045) 46%,
+    transparent 73%
+  ) !important;
+}
+
+.chromeBloomTheme[data-theme-demo='chrome-bloom']
+  :global(main)
+  > :global(div[class*='top-[72vh]'])
+  > :global(div:nth-child(2)) {
+  background-image: radial-gradient(
+    circle,
+    rgba(210, 204, 211, 0.15),
+    rgba(132, 120, 136, 0.045) 47%,
+    transparent 74%
+  ) !important;
+}
+
+.chromeBloomTheme[data-theme-demo='chrome-bloom'] :global(:focus-visible) {
+  outline-color: var(--cb-pink-chrome-reflection);
+}
+
+/* Scoped material helpers for demo-only additions. */
+.chromeBloomTheme[data-theme-demo='chrome-bloom'] :global(.cb-pink-chrome) {
+  background: var(--cb-pink-chrome);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.44),
+    inset 0 -1px 0 rgba(40, 33, 42, 0.52),
+    0 14px 38px rgba(42, 32, 40, 0.24);
+}
+
+.chromeBloomTheme[data-theme-demo='chrome-bloom'] :global(.cb-silver-chrome) {
+  background: var(--cb-silver-chrome);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.5),
+    inset 0 -1px 0 rgba(46, 42, 48, 0.46);
+}
+
+.chromeBloomTheme[data-theme-demo='chrome-bloom'] :global(.cb-surface) {
+  background: var(--cb-surface);
+}
+
+.chromeBloomTheme[data-theme-demo='chrome-bloom'] :global(.cb-surface-strong) {
+  background: var(--cb-surface-strong);
+}
+
+.chromeBloomTheme[data-theme-demo='chrome-bloom'] :global(.cb-chrome-edge) {
+  border-color:
+    rgba(255, 249, 255, 0.5) rgba(169, 142, 169, 0.13)
+    rgba(80, 24, 50, 0.28) rgba(247, 152, 194, 0.24);
+}
+
+.chromeBloomTheme[data-theme-demo='chrome-bloom'] :global(.cb-chrome-sheen) {
+  transform: translate3d(-135%, 0, 0) skewX(-18deg);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.72), transparent);
+  opacity: 0;
+}
+
+.chromeBloomTheme[data-theme-demo='chrome-bloom'] .demoIndicator {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  max-width: calc(100vw - 2rem);
+  padding: 0.45rem 0.5rem 0.45rem 0.8rem;
+  border: 1px solid rgba(222, 217, 223, 0.17);
+  border-radius: 9999px;
+  background:
+    radial-gradient(circle at 12% -20%, rgba(224, 214, 220, 0.1), transparent 42%),
+    rgba(37, 31, 38, 0.84);
+  box-shadow:
+    0 18px 50px rgba(14, 11, 15, 0.32),
+    inset 0 1px 0 rgba(247, 243, 246, 0.12);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+}
+
+.chromeBloomTheme[data-theme-demo='chrome-bloom'] .demoLabel {
+  white-space: nowrap;
+  font-family: var(--font-ibm-plex-mono), monospace;
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  color: rgba(224, 217, 222, 0.63);
+  text-transform: uppercase;
+}
+
+.chromeBloomTheme[data-theme-demo='chrome-bloom'] .backLink {
+  display: inline-flex;
+  min-height: 2rem;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+  border: 1px solid rgba(239, 236, 240, 0.3);
+  border-radius: 9999px;
+  background: var(--cb-silver-chrome);
+  padding-inline: 0.8rem;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  color: #272329;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.48),
+    0 7px 20px rgba(15, 12, 16, 0.24);
+}
+
+/* Navbar: restrained plum body with selective silver chrome. */
+.chromeBloomTheme[data-theme-demo='chrome-bloom'] :global(nav.fixed) {
+  border-color:
+    rgba(235, 232, 236, 0.28) rgba(166, 160, 168, 0.1)
+    rgba(61, 55, 63, 0.22) rgba(199, 188, 196, 0.16) !important;
+  background:
+    radial-gradient(ellipse at 12% -60%, rgba(224, 216, 222, 0.1), transparent 38%),
+    linear-gradient(118deg, rgba(52, 43, 52, 0.84), rgba(25, 20, 26, 0.9)) !important;
+  box-shadow:
+    0 20px 60px rgba(14, 11, 15, 0.3),
+    inset 0 1px 0 rgba(248, 245, 247, 0.15) !important;
+  backdrop-filter: blur(20px) saturate(124%) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(124%) !important;
+}
+
+.chromeBloomTheme[data-theme-demo='chrome-bloom']
+  :global(nav.fixed img) {
+  filter: drop-shadow(0 1px 0 rgba(255, 255, 255, 0.58))
+    drop-shadow(0 5px 12px rgba(134, 107, 121, 0.1));
+}
+
+.chromeBloomTheme[data-theme-demo='chrome-bloom']
+  :global(nav.fixed input[type='search']) {
+  border-color: rgba(210, 205, 212, 0.11) !important;
+  background: linear-gradient(135deg, rgba(40, 34, 41, 0.62), rgba(22, 18, 23, 0.72)) !important;
+  color: var(--cb-text) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 246, 252, 0.06) !important;
+}
+
+.chromeBloomTheme[data-theme-demo='chrome-bloom']
+  :global(nav.fixed input[type='search']::placeholder) {
+  color: rgba(218, 212, 217, 0.4);
+}
+
+.chromeBloomTheme[data-theme-demo='chrome-bloom']
+  :global(nav.fixed button) {
+  border-color:
+    rgba(245, 242, 245, 0.38) rgba(116, 111, 119, 0.25)
+    rgba(58, 54, 61, 0.42) rgba(211, 205, 212, 0.32) !important;
+  background: var(--cb-balanced-chrome) !important;
+  color: #282429 !important;
+  box-shadow:
+    0 10px 24px rgba(15, 12, 16, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.46) !important;
+}
+
+/* Hero: strongest Chrome Bloom expression, without a heavy metal frame. */
+.chromeBloomTheme[data-theme-demo='chrome-bloom']
+  :global(article[aria-roledescription='slide']) {
+  border-color:
+    rgba(239, 236, 240, 0.34) rgba(159, 153, 162, 0.12)
+    rgba(56, 51, 58, 0.3) rgba(201, 188, 198, 0.18) !important;
+  background:
+    radial-gradient(ellipse at 10% 0%, rgba(202, 187, 197, 0.16), transparent 35%),
+    radial-gradient(ellipse at 84% 18%, rgba(178, 166, 179, 0.09), transparent 30%),
+    radial-gradient(ellipse at 92% 88%, rgba(151, 104, 124, 0.095), transparent 31%),
+    linear-gradient(148deg, rgba(62, 51, 61, 0.9), rgba(27, 23, 28, 0.93) 76%) !important;
+  box-shadow:
+    0 36px 96px rgba(13, 11, 14, 0.4),
+    0 9px 34px rgba(91, 70, 81, 0.08),
+    inset 0 1px 0 rgba(248, 246, 248, 0.19),
+    inset 0 -1px 0 rgba(42, 38, 44, 0.3) !important;
+  backdrop-filter: blur(19px) saturate(120%) !important;
+  -webkit-backdrop-filter: blur(19px) saturate(120%) !important;
+}
+
+.chromeBloomTheme[data-theme-demo='chrome-bloom']
+  :global(article[aria-roledescription='slide'][aria-current='true'])::before {
+  position: absolute;
+  top: -2.1rem;
+  right: clamp(2.4rem, 8vw, 7rem);
+  z-index: 3;
+  width: clamp(4.8rem, 9vw, 7.4rem);
+  height: 8.5rem;
+  border-radius: 92% 8% 74% 26% / 70% 12% 88% 30%;
+  background: var(--cb-balanced-chrome);
+  box-shadow:
+    inset 5px 2px 9px rgba(255, 255, 255, 0.28),
+    inset -8px -5px 15px rgba(47, 42, 49, 0.58),
+    0 18px 36px rgba(40, 34, 41, 0.2);
+  content: '';
+  pointer-events: none;
+  transform: rotate(41deg) skewY(-12deg);
+  opacity: 0.48;
+  clip-path: polygon(50% 0, 72% 28%, 100% 100%, 51% 72%, 0 100%, 35% 34%);
+}
+
+.chromeBloomTheme[data-theme-demo='chrome-bloom']
+  :global(article[aria-roledescription='slide'][aria-current='true'])::after {
+  position: absolute;
+  inset: 1px;
+  z-index: 4;
+  border: 1px solid transparent;
+  border-color:
+    rgba(244, 241, 244, 0.2) rgba(170, 162, 171, 0.07)
+    rgba(54, 49, 56, 0.13) rgba(187, 168, 178, 0.1);
+  border-radius: inherit;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    inset 18px 0 34px -34px rgba(190, 146, 166, 0.2);
+  content: '';
+  pointer-events: none;
+}
+
+.chromeBloomTheme[data-theme-demo='chrome-bloom']
+  :global(article[aria-roledescription='slide']:not([aria-current='true'])) {
+  border-color: rgba(210, 205, 212, 0.14) !important;
+  background: linear-gradient(160deg, rgba(45, 38, 46, 0.92), rgba(22, 18, 23, 0.95)) !important;
+}
+
+.chromeBloomTheme[data-theme-demo='chrome-bloom']
+  :global(article[aria-roledescription='slide'])
+  :global([class*='mix-blend-screen']) {
+  background-image:
+    radial-gradient(ellipse at 12% 2%, rgba(231, 226, 231, 0.14), rgba(160, 147, 157, 0.035) 39%, transparent 65%),
+    radial-gradient(ellipse at 92% 104%, rgba(160, 116, 134, 0.075), transparent 43%) !important;
+}
+
+.chromeBloomTheme[data-theme-demo='chrome-bloom']
+  :global(article[aria-roledescription='slide'])
+  :global([class*='rounded-2xl'][class*='backdrop-blur-md']) {
+  border-color: rgba(219, 214, 220, 0.15) !important;
+  background:
+    radial-gradient(circle at 12% 0%, rgba(227, 221, 225, 0.08), transparent 40%),
+    linear-gradient(135deg, rgba(59, 49, 59, 0.44), rgba(26, 21, 27, 0.58)) !important;
+  box-shadow:
+    0 14px 34px rgba(14, 11, 15, 0.22),
+    inset 0 1px 0 rgba(247, 244, 246, 0.11) !important;
+}
+
+.chromeBloomTheme[data-theme-demo='chrome-bloom']
+  :global(article[aria-roledescription='slide'])
+  :global(a[class*='bg-white']) {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(237, 234, 238, 0.32);
+  background: var(--cb-balanced-chrome) !important;
+  color: #272329 !important;
+  box-shadow:
+    0 14px 34px rgba(16, 13, 17, 0.26),
+    0 5px 18px rgba(113, 83, 97, 0.09),
+    inset 0 1px 0 rgba(255, 255, 255, 0.42),
+    inset 0 -1px 0 rgba(48, 43, 50, 0.5) !important;
+  transition:
+    background 280ms ease,
+    border-color 280ms ease,
+    box-shadow 280ms ease !important;
+}
+
+.chromeBloomTheme[data-theme-demo='chrome-bloom']
+  :global(article[aria-roledescription='slide'])
+  :global(a[class*='bg-white']:hover) {
+  border-color: rgba(244, 241, 244, 0.43);
+  background: var(--cb-balanced-chrome-hover) !important;
+  box-shadow:
+    0 17px 38px rgba(14, 11, 15, 0.3),
+    0 6px 22px rgba(118, 87, 101, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.5) !important;
+}
+
+.chromeBloomTheme[data-theme-demo='chrome-bloom']
+  :global(article[aria-roledescription='slide'])
+  :global(a[class*='bg-white'])::after {
+  position: absolute;
+  inset: -25% auto -25% -24%;
+  width: 11%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.38), transparent);
+  content: '';
+  pointer-events: none;
+  transform: skewX(-18deg);
+  opacity: 0;
+}
+
+.chromeBloomTheme[data-theme-demo='chrome-bloom']
+  :global(article[aria-roledescription='slide'])
+  :global(a[class*='bg-white']:hover)::after {
+  animation: cb-sheen-pass 900ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.chromeBloomTheme[data-theme-demo='chrome-bloom']
+  :global([aria-roledescription='carousel'])
+  > :global(div[class*='bottom-4'])
+  :global(button) {
+  background: var(--cb-silver-chrome-light) !important;
+  box-shadow:
+    0 0 0 1px rgba(221, 197, 215, 0.12),
+    0 5px 16px rgba(196, 62, 118, 0.18);
+}
+
+/* Filters */
+.chromeBloomTheme[data-theme-demo='chrome-bloom']
+  :global([aria-label='Filter katalog'] button[aria-pressed]) {
+  border-color: rgba(210, 205, 211, 0.13) !important;
+  color: var(--cb-text-muted) !important;
+  box-shadow:
+    0 12px 30px rgba(14, 11, 15, 0.22),
+    inset 0 1px 0 rgba(245, 242, 245, 0.06) !important;
+}
+
+.chromeBloomTheme[data-theme-demo='chrome-bloom']
+  :global([aria-label='Filter katalog'] button[aria-pressed])
+  > :global(span[aria-hidden='true']) {
+  background: linear-gradient(135deg, rgba(51, 43, 52, 0.64), rgba(23, 19, 24, 0.74)) !important;
+}
+
+.chromeBloomTheme[data-theme-demo='chrome-bloom']
+  :global([aria-label='Filter katalog'] button[aria-pressed='true']) {
+  border-color:
+    rgba(239, 236, 240, 0.38) rgba(131, 125, 134, 0.23)
+    rgba(54, 49, 56, 0.42) rgba(196, 182, 192, 0.3) !important;
+  color: #29252b !important;
+  text-shadow: 0 1px rgba(255, 255, 255, 0.18);
+  box-shadow:
+    0 14px 34px rgba(15, 12, 16, 0.25),
+    0 4px 16px rgba(110, 81, 95, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.4),
+    inset 0 -1px 0 rgba(48, 43, 50, 0.48) !important;
+}
+
+.chromeBloomTheme[data-theme-demo='chrome-bloom']
+  :global([aria-label='Filter katalog'] button[aria-pressed='true'])
+  > :global(span[aria-hidden='true']) {
+  background: var(--cb-balanced-chrome) !important;
+}
+
+.chromeBloomTheme[data-theme-demo='chrome-bloom']
+  :global([aria-label='Filter katalog'] button[aria-pressed='true'])
+  :global(span[class*='rounded-full']) {
+  border-color: rgba(240, 237, 240, 0.32) !important;
+  background: linear-gradient(135deg, #b7b2b9, #756d76) !important;
+  color: #29252b !important;
+}
+
+/* Catalog cards keep artwork dominant. */
+.chromeBloomTheme[data-theme-demo='chrome-bloom'] :global(main a[href^='/game/']) {
+  border-color:
+    rgba(218, 214, 219, 0.17) rgba(151, 146, 154, 0.09)
+    rgba(55, 50, 57, 0.22) rgba(187, 176, 185, 0.12) !important;
+  background: rgba(32, 27, 33, 0.6) !important;
+  box-shadow:
+    0 20px 54px rgba(13, 11, 14, 0.29),
+    inset 0 1px 0 rgba(246, 243, 245, 0.07) !important;
+}
+
+.chromeBloomTheme[data-theme-demo='chrome-bloom'] :global(main a[href^='/game/']:hover),
+.chromeBloomTheme[data-theme-demo='chrome-bloom']
+  :global(main a[href^='/game/']:focus-visible) {
+  border-color:
+    rgba(237, 234, 238, 0.34) rgba(178, 169, 178, 0.17)
+    rgba(66, 59, 68, 0.3) rgba(198, 177, 189, 0.22) !important;
+  box-shadow:
+    0 27px 68px rgba(13, 10, 14, 0.36),
+    0 9px 28px rgba(119, 86, 101, 0.08),
+    inset 0 1px 0 rgba(249, 246, 248, 0.12) !important;
+}
+
+.chromeBloomTheme[data-theme-demo='chrome-bloom']
+  :global(main a[href^='/game/'])
+  > :global(div[role='img']) {
+  background:
+    radial-gradient(circle at 22% 5%, rgba(155, 118, 134, 0.09), transparent 37%),
+    linear-gradient(155deg, rgba(48, 41, 49, 0.86), rgba(23, 19, 24, 0.94)) !important;
+}
+
+.chromeBloomTheme[data-theme-demo='chrome-bloom']
+  :global(main a[href^='/game/'])
+  > :global(div[class*='bg-[linear-gradient(to_top']) {
+  background-image: linear-gradient(
+    to top,
+    rgba(36, 29, 36, 0.93),
+    rgba(91, 69, 80, 0.3) 42%,
+    transparent 74%
+  ) !important;
+}
+
+.chromeBloomTheme[data-theme-demo='chrome-bloom']
+  :global(main a[href^='/game/'])
+  > :global(div[class*='h-[82px]']) {
+  background:
+    radial-gradient(circle at 15% 0%, rgba(221, 214, 219, 0.1), transparent 39%),
+    linear-gradient(145deg, rgba(62, 52, 62, 0.64), rgba(27, 22, 28, 0.76)) !important;
+  box-shadow:
+    0 -15px 36px rgba(14, 11, 15, 0.28),
+    inset 0 1px 0 rgba(246, 243, 245, 0.1) !important;
+  backdrop-filter: blur(13px) saturate(122%) !important;
+  -webkit-backdrop-filter: blur(13px) saturate(122%) !important;
+}
+
+.chromeBloomTheme[data-theme-demo='chrome-bloom']
+  :global(main a[href^='/game/'])
+  :global(span[class*='h-1'][class*='rounded-full']) {
+  background: var(--cb-silver-chrome-light) !important;
+  box-shadow:
+    0 0 0 1px rgba(224, 204, 218, 0.26),
+    0 0 9px rgba(133, 99, 114, 0.18) !important;
+}
+
+.chromeBloomTheme[data-theme-demo='chrome-bloom'] :global(.catalog-card-shine) {
+  background: linear-gradient(
+    90deg,
+    transparent 34%,
+    rgba(133, 107, 119, 0.06) 42%,
+    rgba(239, 236, 239, 0.38) 49.5%,
+    rgba(190, 185, 193, 0.12) 55%,
+    rgba(141, 108, 123, 0.07) 59%,
+    transparent 66%
+  ) !important;
+}
+
+.chromeBloomTheme[data-theme-demo='chrome-bloom'] :global(section button[aria-expanded]) {
+  border-color:
+    rgba(247, 236, 243, 0.3) rgba(144, 128, 146, 0.17)
+    rgba(62, 51, 65, 0.28) rgba(220, 207, 223, 0.24) !important;
+  background: var(--cb-balanced-chrome) !important;
+  color: #29252b !important;
+  box-shadow:
+    0 14px 36px rgba(14, 11, 15, 0.25),
+    inset 0 1px 0 rgba(255, 255, 255, 0.42) !important;
+}
+
+/* Suggestion banner */
+.chromeBloomTheme[data-theme-demo='chrome-bloom']
+  :global(section[aria-labelledby='catalog-suggestion-title']) {
+  border-color:
+    rgba(225, 221, 226, 0.24) rgba(158, 152, 160, 0.09)
+    rgba(55, 49, 57, 0.24) rgba(190, 178, 188, 0.14) !important;
+  background:
+    radial-gradient(ellipse at 7% 12%, rgba(145, 108, 124, 0.09), transparent 34%),
+    radial-gradient(ellipse at 96% 108%, rgba(199, 194, 203, 0.075), transparent 30%),
+    linear-gradient(145deg, rgba(54, 46, 55, 0.87), rgba(25, 21, 26, 0.92)) !important;
+  box-shadow:
+    var(--cb-shadow),
+    inset 0 1px 0 rgba(246, 243, 245, 0.13) !important;
+}
+
+.chromeBloomTheme[data-theme-demo='chrome-bloom']
+  :global(section[aria-labelledby='catalog-suggestion-title'])
+  > :global(div[aria-hidden='true']) {
+  background-image:
+    radial-gradient(ellipse at 9% 20%, rgba(144, 104, 121, 0.08), transparent 43%),
+    radial-gradient(ellipse at 96% 106%, rgba(200, 195, 203, 0.065), transparent 37%) !important;
+}
+
+.chromeBloomTheme[data-theme-demo='chrome-bloom']
+  :global(section[aria-labelledby='catalog-suggestion-title'])
+  :global(a) {
+  border-color:
+    rgba(239, 236, 240, 0.36) rgba(129, 123, 132, 0.23)
+    rgba(53, 48, 55, 0.46) rgba(198, 184, 194, 0.29) !important;
+  background: var(--cb-balanced-chrome) !important;
+  color: #29252b !important;
+  box-shadow:
+    0 14px 34px rgba(14, 11, 15, 0.26),
+    0 5px 18px rgba(110, 80, 94, 0.09),
+    inset 0 1px 0 rgba(255, 255, 255, 0.42) !important;
+}
+
+.chromeBloomTheme[data-theme-demo='chrome-bloom']
+  :global(section[aria-labelledby='catalog-suggestion-title'])
+  :global(a:hover) {
+  background: var(--cb-balanced-chrome-hover) !important;
+}
+
+.chromeBloomTheme[data-theme-demo='chrome-bloom']
+  :global(section[aria-labelledby='catalog-suggestion-title'])
+  :global(#box-side stop:first-child),
+.chromeBloomTheme[data-theme-demo='chrome-bloom']
+  :global(section[aria-labelledby='catalog-suggestion-title'])
+  :global(#glass-lens stop:first-child) {
+  stop-color: rgba(218, 212, 219, 0.46) !important;
+}
+
+.chromeBloomTheme[data-theme-demo='chrome-bloom']
+  :global(section[aria-labelledby='catalog-suggestion-title'])
+  :global(#box-side stop:last-child),
+.chromeBloomTheme[data-theme-demo='chrome-bloom']
+  :global(section[aria-labelledby='catalog-suggestion-title'])
+  :global(#glass-lens stop:last-child) {
+  stop-color: rgba(111, 94, 104, 0.25) !important;
+}
+
+/* Footer retains reveal, FooterBoxes, marquee, and breathing aurora. */
+.chromeBloomTheme[data-theme-demo='chrome-bloom'] :global(.cinematic-footer-wrapper) {
+  --footer-background: #181419;
+  --footer-foreground: #f4f1f3;
+  --footer-muted: rgba(221, 215, 220, 0.57);
+  --footer-border: rgba(222, 217, 222, 0.11);
+
+  background:
+    radial-gradient(ellipse at 18% 22%, rgba(135, 96, 113, 0.075), transparent 30%),
+    radial-gradient(ellipse at 85% 72%, rgba(192, 187, 196, 0.065), transparent 27%),
+    linear-gradient(145deg, #2b252c, #181419 72%) !important;
+}
+
+.chromeBloomTheme[data-theme-demo='chrome-bloom'] :global(.footer-aurora) {
+  background: radial-gradient(
+    ellipse,
+    rgba(144, 104, 121, 0.075),
+    rgba(175, 165, 177, 0.04) 43%,
+    transparent 70%
+  ) !important;
+}
+
+.chromeBloomTheme[data-theme-demo='chrome-bloom'] :global(.footer-glass-surface) {
+  border-color:
+    rgba(225, 221, 226, 0.2) rgba(154, 148, 157, 0.08)
+    rgba(52, 47, 54, 0.24) rgba(185, 174, 184, 0.11) !important;
+  background:
+    radial-gradient(ellipse at 9% 0%, rgba(214, 207, 213, 0.085), transparent 37%),
+    linear-gradient(145deg, rgba(50, 43, 51, 0.84), rgba(23, 19, 24, 0.9)) !important;
+  box-shadow:
+    0 34px 88px -38px rgba(11, 9, 12, 0.76),
+    inset 0 1px 0 rgba(244, 241, 243, 0.11) !important;
+}
+
+.chromeBloomTheme[data-theme-demo='chrome-bloom'] :global(.footer-glass-pill) {
+  border-color: rgba(216, 211, 217, 0.14) !important;
+  background: linear-gradient(135deg, rgba(56, 48, 57, 0.62), rgba(24, 20, 25, 0.72)) !important;
+  box-shadow:
+    0 12px 30px -12px rgba(11, 9, 12, 0.62),
+    inset 0 1px 0 rgba(243, 240, 242, 0.09) !important;
+}
+
+.chromeBloomTheme[data-theme-demo='chrome-bloom'] :global(.footer-glass-pill:hover) {
+  border-color: rgba(231, 227, 232, 0.27) !important;
+  background: linear-gradient(135deg, rgba(80, 72, 81, 0.72), rgba(42, 35, 43, 0.78)) !important;
+  color: var(--cb-text) !important;
+}
+
+.chromeBloomTheme[data-theme-demo='chrome-bloom']
+  :global(.cinematic-footer-wrapper span[class*='rounded-full']) {
+  border-color:
+    rgba(222, 218, 223, 0.2) rgba(122, 117, 125, 0.14)
+    rgba(54, 50, 57, 0.24) rgba(190, 184, 191, 0.17) !important;
+  background: linear-gradient(135deg, rgba(115, 109, 117, 0.68), rgba(61, 56, 63, 0.78)) !important;
+  color: #eee9ed !important;
+}
+
+.chromeBloomTheme[data-theme-demo='chrome-bloom']
+  :global(.cinematic-footer-wrapper)
+  > :global(div[class*='-rotate-[3deg]']) {
+  border-color: rgba(219, 214, 220, 0.18) !important;
+  background:
+    linear-gradient(180deg, rgba(235, 231, 234, 0.075), transparent 14%),
+    linear-gradient(90deg, rgba(51, 42, 51, 0.97), rgba(28, 23, 29, 0.98), rgba(53, 44, 54, 0.97)) !important;
+  box-shadow:
+    0 18px 56px rgba(11, 9, 12, 0.45),
+    inset 0 1px 0 rgba(241, 238, 241, 0.12) !important;
+}
+
+.chromeBloomTheme[data-theme-demo='chrome-bloom']
+  :global(.cinematic-footer-wrapper)
+  > :global(div[class*='-rotate-[3deg]'])::before {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 3%,
+    rgba(148, 113, 128, 0.1) 18%,
+    rgba(230, 226, 230, 0.18) 31%,
+    transparent 45%,
+    rgba(190, 185, 193, 0.11) 72%,
+    transparent 94%
+  );
+  content: '';
+  pointer-events: none;
+}
+
+.chromeBloomTheme[data-theme-demo='chrome-bloom']
+  :global(.cinematic-footer-wrapper)
+  :global([class*='border-white/[0.09]']) {
+  border-color: rgba(232, 210, 225, 0.065) !important;
+}
+
+.chromeBloomTheme[data-theme-demo='chrome-bloom']
+  :global(.cinematic-footer-wrapper)
+  :global([class*='hover:bg-white/[0.18]']:hover) {
+  background: rgba(151, 124, 137, 0.12) !important;
+}
+
+.chromeBloomTheme[data-theme-demo='chrome-bloom']
+  :global(.cinematic-footer-wrapper)
+  :global([style*='grid-template-columns']) {
+  opacity: 0.18;
+}
+
+@media (max-width: 639px) {
+  .chromeBloomTheme[data-theme-demo='chrome-bloom'] .demoIndicator {
+    right: auto;
+    left: 0.75rem;
+    bottom: 0.75rem;
+    max-width: calc(100vw - 1.5rem);
+    padding: 0.4rem;
+  }
+
+  .chromeBloomTheme[data-theme-demo='chrome-bloom'] .demoLabel {
+    display: none;
+  }
+
+  .chromeBloomTheme[data-theme-demo='chrome-bloom'] .backLink {
+    padding-inline: 0.65rem;
+    font-size: 0.625rem;
+  }
+
+  .chromeBloomTheme[data-theme-demo='chrome-bloom']
+    :global(article[aria-roledescription='slide'][aria-current='true'])::before {
+    top: -2.8rem;
+    right: 2.4rem;
+    width: 4.6rem;
+    height: 7.2rem;
+    opacity: 0.5;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chromeBloomTheme[data-theme-demo='chrome-bloom'] .shaderReflection {
+    animation: none;
+  }
+
+  .chromeBloomTheme[data-theme-demo='chrome-bloom']
+    :global(article[aria-roledescription='slide'])
+    :global(a[class*='bg-white']:hover)::after {
+    animation: none;
+  }
+}

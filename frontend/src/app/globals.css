@@ -1,21 +1,51 @@
-/* 1. IMPORT FONT WAJIB DI PALING ATAS */
-@import url('https://fonts.googleapis.com/css2?family=Anonymous+Pro:wght@400;700&family=IBM+Plex+Mono:wght@400;600&family=Inter:wght@400;600;700&display=swap');
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
+  --aj-bg: #07091f;
+  --aj-bg-alt: #0b1026;
+  --aj-surface: rgba(255, 255, 255, 0.045);
+  --aj-surface-strong: rgba(255, 255, 255, 0.075);
+  --aj-border: rgba(255, 255, 255, 0.09);
+  --aj-border-strong: rgba(255, 255, 255, 0.15);
+  --aj-text: #f8fafc;
+  --aj-text-muted: #94a3b8;
+  --aj-accent: #38bdf8;
+  --aj-success: #34d399;
+  --aj-warning: #fbbf24;
+  --aj-danger: #fb7185;
+  --mono-obsidian: #000000;
+  --mono-paper: #ffffff;
+  --mono-inkstone: #181818;
+  --mono-felt-gray: #6d6d6d;
+  --mono-slate-pill: #636363;
+  --mono-ash-mist: #9a9a9a;
+  --mono-ease: cubic-bezier(0.19, 1, 0.22, 1);
   --background: #000000;
   --foreground: #ededed;
   --accent-tertiary: 137 86% 59%;
 }
 
+html {
+  scroll-behavior: smooth;
+}
+
 body {
   color: var(--foreground);
   background: var(--background);
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-inter), sans-serif;
   overflow-x: hidden;
+}
+
+:focus-visible {
+  outline: 2px solid var(--aj-accent);
+  outline-offset: 3px;
+}
+
+::selection {
+  background: rgba(56, 189, 248, 0.24);
+  color: #ffffff;
 }
 
 /* 2. CUSTOM SCROLLBAR */
@@ -31,7 +61,82 @@ body {
   border-radius: 3px;
 }
 
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@layer utilities {
+  .aj-public-bg {
+    background: #ffffff;
+    color: #000000;
+  }
+
+  .aj-hero-atmosphere {
+    background:
+      radial-gradient(circle at 18% 28%, rgba(160, 224, 171, 0.92), transparent 33%),
+      radial-gradient(circle at 52% 44%, rgba(255, 172, 46, 0.82), transparent 35%),
+      radial-gradient(circle at 78% 64%, rgba(165, 45, 37, 0.86), transparent 38%),
+      radial-gradient(circle at 40% 78%, rgba(0, 0, 0, 0.72), transparent 48%),
+      #000000;
+  }
+
+  .aj-glass {
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    backdrop-filter: blur(22px);
+    -webkit-backdrop-filter: blur(22px);
+  }
+
+  .aj-glass-strong {
+    background: #ffffff;
+    border: 1px solid #000000;
+  }
+}
+
 @layer components {
+  .aj-public-glass {
+  background: rgba(0, 0, 0, 0.035);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(12px) saturate(1.5);
+  -webkit-backdrop-filter: blur(12px) saturate(1.5);
+}
+
+  .catalog-card-shine {
+    /*
+     * Bidang transparan diperlebar, tetapi lebar beam, durasi, warna,
+     * opacity, easing, skew, dan lintasan visual tetap seperti versi awal.
+     * Ini mencegah sisi kiri layer shine terlihat sebagai garis terpotong.
+     */
+    inset-block: -25%;
+    left: -106%;
+    width: 140%;
+    opacity: 0;
+    transform: skewX(-18deg) translateX(0);
+    background: linear-gradient(
+      90deg,
+      transparent 36.4%,
+      rgba(59, 130, 246, 0.08) 41.3%,
+      rgba(255, 255, 255, 0.48) 49.5%,
+      rgba(168, 85, 247, 0.14) 56%,
+      transparent 63.6%
+    );
+    filter: blur(2px);
+    mix-blend-mode: screen;
+    will-change: transform, opacity;
+  }
+
+  .group:hover > .catalog-card-shine,
+  .group:focus-visible > .catalog-card-shine {
+    animation: catalog-card-shine 850ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
   /* --- TABLE SYSTEM --- */
   .aj-table-wrapper {
     background: #0d0d0d;
@@ -46,7 +151,7 @@ body {
   }
 
   .aj-th {
-    font-family: 'IBM Plex Mono', monospace;
+    font-family: var(--font-ibm-plex-mono), monospace;
     font-size: 14px;
     font-weight: 400;
     color: #8a9886;
@@ -71,7 +176,7 @@ body {
     color: #ffffff;
   }
   .aj-card-sub {
-    font-family: 'Anonymous Pro', monospace;
+    font-family: var(--font-anonymous-pro), monospace;
     font-size: 13px;
     color: #6b6b6b;
   }
@@ -220,5 +325,30 @@ body {
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
+  }
+}
+
+@keyframes catalog-card-shine {
+  0% {
+    opacity: 0;
+    transform: skewX(-18deg) translateX(0);
+  }
+
+  /* Beam tetap bergerak, tetapi belum menyala saat masih menyentuh sisi kiri. */
+  12% {
+    opacity: 0;
+  }
+
+  24% {
+    opacity: 0.9;
+  }
+
+  72% {
+    opacity: 0.65;
+  }
+
+  100% {
+    opacity: 0;
+    transform: skewX(-18deg) translateX(116.72%);
   }
 }

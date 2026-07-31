@@ -1,21 +1,26 @@
-/** @type {import('next').NextConfig} */
-const nextConfig = {
+import type { NextConfig } from 'next'
+
+const nextConfig: NextConfig = {
+  output: 'export',
+  trailingSlash: true,
+
   images: {
+    unoptimized: true,
     remotePatterns: [
       {
         protocol: 'https',
-        hostname: 'placehold.co', // Yang tadi kita pake
+        hostname: 'placehold.co'
       },
       {
         protocol: 'https',
-        hostname: 'via.placeholder.com', // Sisaan lama
+        hostname: 'via.placeholder.com'
       },
       {
         protocol: 'https',
-        hostname: 'i.imgur.com', // 👈 TAMBAHIN INI BIAR GAMBAR USER MUNCUL
-      },
-    ],
-  },
-};
+        hostname: 'i.imgur.com'
+      }
+    ]
+  }
+}
 
-module.exports = nextConfig;
+export default nextConfig

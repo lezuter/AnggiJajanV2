@@ -1,0 +1,493 @@
+.glassTheme[data-theme-demo='glass'] {
+  --glass-soft-bg:
+    radial-gradient(circle at 14% -18%, rgba(255, 255, 255, 0.11), transparent 38%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.012));
+  --glass-bg:
+    radial-gradient(circle at 12% -16%, rgba(255, 255, 255, 0.16), transparent 38%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.018));
+  --glass-strong-bg:
+    radial-gradient(ellipse at 10% -14%, rgba(255, 255, 255, 0.2), transparent 42%),
+    radial-gradient(circle at 92% 112%, rgba(255, 255, 255, 0.055), transparent 35%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0.016));
+  --glass-edge-top: rgba(255, 255, 255, 0.23);
+  --glass-edge-left: rgba(255, 255, 255, 0.14);
+  --glass-edge-soft: rgba(255, 255, 255, 0.045);
+  --glass-inner-highlight: rgba(255, 255, 255, 0.16);
+  --glass-shadow: 0 22px 58px rgba(0, 0, 0, 0.17);
+  --glass-shadow-soft: 0 14px 38px rgba(0, 0, 0, 0.12);
+  --glass-blur-soft: 12px;
+  --glass-blur: 15px;
+  --glass-blur-strong: 18px;
+  --glass-text: rgba(255, 255, 255, 0.97);
+  --glass-text-muted: rgba(255, 255, 255, 0.64);
+
+  position: relative;
+  isolation: isolate;
+  width: 100%;
+  overflow-x: clip;
+  color: var(--glass-text);
+}
+
+.glassTheme[data-theme-demo='glass'] :global(:focus-visible) {
+  outline-color: rgba(255, 255, 255, 0.8);
+}
+
+.glassTheme[data-theme-demo='glass'] .demoIndicator {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  max-width: calc(100vw - 2rem);
+  padding: 0.5rem 0.6rem 0.5rem 0.85rem;
+  border-style: solid;
+  border-width: 1px;
+  border-color:
+    var(--glass-edge-top) var(--glass-edge-soft) var(--glass-edge-soft)
+    var(--glass-edge-left);
+  border-radius: 9999px;
+  background: var(--glass-bg);
+  box-shadow:
+    var(--glass-shadow-soft),
+    inset 0 1px 0 var(--glass-inner-highlight);
+  backdrop-filter: blur(var(--glass-blur)) saturate(138%);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(138%);
+}
+
+.glassTheme[data-theme-demo='glass'] .demoLabel {
+  white-space: nowrap;
+  font-family: var(--font-ibm-plex-mono), monospace;
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  color: rgba(255, 255, 255, 0.62);
+  text-transform: uppercase;
+}
+
+.glassTheme[data-theme-demo='glass'] .backLink {
+  display: inline-flex;
+  min-height: 2rem;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+  border-style: solid;
+  border-width: 1px;
+  border-color:
+    rgba(255, 255, 255, 0.18) rgba(255, 255, 255, 0.055)
+    rgba(255, 255, 255, 0.045) rgba(255, 255, 255, 0.12);
+  border-radius: 9999px;
+  background: var(--glass-bg);
+  padding-inline: 0.8rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.92);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14);
+  transition:
+    background-color 240ms ease,
+    border-color 240ms ease,
+    color 240ms ease;
+}
+
+.glassTheme[data-theme-demo='glass'] .backLink:hover {
+  border-color:
+    rgba(255, 255, 255, 0.28) rgba(255, 255, 255, 0.08)
+    rgba(255, 255, 255, 0.06) rgba(255, 255, 255, 0.16);
+  background-color: rgba(255, 255, 255, 0.035);
+  color: #fff;
+}
+
+/* Standard glass: navbar */
+.glassTheme[data-theme-demo='glass'] :global(nav.fixed) {
+  border-style: solid !important;
+  border-width: 1px !important;
+  border-color:
+    var(--glass-edge-top) var(--glass-edge-soft) var(--glass-edge-soft)
+    var(--glass-edge-left) !important;
+  background: var(--glass-bg) !important;
+  box-shadow:
+    var(--glass-shadow-soft),
+    inset 0 1px 0 var(--glass-inner-highlight),
+    inset 1px 0 0 rgba(255, 255, 255, 0.055) !important;
+  backdrop-filter: blur(var(--glass-blur)) saturate(140%) !important;
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(140%) !important;
+}
+
+.glassTheme[data-theme-demo='glass'] :global(nav.fixed input[type='search']),
+.glassTheme[data-theme-demo='glass'] :global(nav.fixed button) {
+  border-style: solid !important;
+  border-width: 1px !important;
+  border-color:
+    rgba(255, 255, 255, 0.18) rgba(255, 255, 255, 0.052)
+    rgba(255, 255, 255, 0.042) rgba(255, 255, 255, 0.11) !important;
+  background:
+    radial-gradient(circle at 12% -35%, rgba(255, 255, 255, 0.16), transparent 42%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.085), rgba(255, 255, 255, 0.025)) !important;
+  box-shadow:
+    0 8px 24px rgba(0, 0, 0, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.14) !important;
+  backdrop-filter: blur(var(--glass-blur)) saturate(138%) !important;
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(138%) !important;
+}
+
+.glassTheme[data-theme-demo='glass']
+  :global(nav.fixed input[type='search']:focus) {
+  border-color:
+    rgba(255, 255, 255, 0.27) rgba(255, 255, 255, 0.08)
+    rgba(255, 255, 255, 0.06) rgba(255, 255, 255, 0.16) !important;
+  background-color: rgba(255, 255, 255, 0.035) !important;
+}
+
+/* Strong glass: hero. Grid and ambient light remain visible through it. */
+.glassTheme[data-theme-demo='glass']
+  :global(article[aria-roledescription='slide']) {
+  border-style: solid !important;
+  border-width: 1px !important;
+  border-color:
+    rgba(255, 255, 255, 0.25) rgba(255, 255, 255, 0.048)
+    rgba(255, 255, 255, 0.035) rgba(255, 255, 255, 0.15) !important;
+  background: var(--glass-strong-bg) !important;
+  box-shadow:
+    var(--glass-shadow),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    inset 1px 0 0 rgba(255, 255, 255, 0.06) !important;
+  backdrop-filter: blur(var(--glass-blur-strong)) saturate(145%) !important;
+  -webkit-backdrop-filter: blur(var(--glass-blur-strong)) saturate(145%) !important;
+}
+
+.glassTheme[data-theme-demo='glass']
+  :global(article[aria-roledescription='slide'])
+  :global([class*='mix-blend-screen']) {
+  background-image:
+    radial-gradient(
+      ellipse at 12% 0%,
+      rgba(255, 255, 255, 0.16),
+      rgba(255, 255, 255, 0.025) 34%,
+      transparent 64%
+    ),
+    radial-gradient(
+      ellipse at 96% 108%,
+      rgba(255, 255, 255, 0.065),
+      transparent 42%
+    ) !important;
+  opacity: 0.72;
+}
+
+.glassTheme[data-theme-demo='glass']
+  :global(article[aria-roledescription='slide'][aria-current='true'])
+  > :global(div[class*='absolute'][class*='inset-0'][class*='h-full'])::before {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background: linear-gradient(
+    90deg,
+    rgba(0, 0, 0, 0.16),
+    rgba(0, 0, 0, 0.035) 48%,
+    transparent 72%
+  );
+  content: '';
+  pointer-events: none;
+}
+
+.glassTheme[data-theme-demo='glass']
+  :global(article[aria-roledescription='slide'])
+  :global([class*='rounded-2xl'][class*='backdrop-blur-md']) {
+  border-style: solid !important;
+  border-width: 1px !important;
+  border-color:
+    rgba(255, 255, 255, 0.18) rgba(255, 255, 255, 0.045)
+    rgba(255, 255, 255, 0.035) rgba(255, 255, 255, 0.11) !important;
+  background: var(--glass-bg) !important;
+  box-shadow:
+    0 10px 28px rgba(0, 0, 0, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.13) !important;
+}
+
+.glassTheme[data-theme-demo='glass']
+  :global(article[aria-roledescription='slide'])
+  :global(a[class*='bg-white']) {
+  border-style: solid;
+  border-width: 1px;
+  border-color:
+    rgba(255, 255, 255, 0.24) rgba(255, 255, 255, 0.065)
+    rgba(255, 255, 255, 0.05) rgba(255, 255, 255, 0.15);
+  background:
+    radial-gradient(circle at 18% -40%, rgba(255, 255, 255, 0.2), transparent 44%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.13), rgba(255, 255, 255, 0.045)) !important;
+  color: var(--glass-text) !important;
+  box-shadow:
+    0 10px 28px rgba(0, 0, 0, 0.11),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  backdrop-filter: blur(var(--glass-blur)) saturate(138%);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(138%);
+}
+
+.glassTheme[data-theme-demo='glass']
+  :global(article[aria-roledescription='slide'])
+  :global(a[class*='bg-white']:hover) {
+  background-color: rgba(255, 255, 255, 0.045) !important;
+}
+
+/* Soft glass: catalog filter capsules */
+.glassTheme[data-theme-demo='glass']
+  :global([aria-label='Filter katalog'] button[aria-pressed]) {
+  border-style: solid !important;
+  border-width: 1px !important;
+  border-color:
+    rgba(255, 255, 255, 0.14) rgba(255, 255, 255, 0.04)
+    rgba(255, 255, 255, 0.03) rgba(255, 255, 255, 0.085) !important;
+  color: var(--glass-text-muted) !important;
+  box-shadow:
+    var(--glass-shadow-soft),
+    inset 0 1px 0 rgba(255, 255, 255, 0.09) !important;
+  backdrop-filter: blur(var(--glass-blur-soft)) saturate(128%) !important;
+  -webkit-backdrop-filter: blur(var(--glass-blur-soft)) saturate(128%) !important;
+}
+
+.glassTheme[data-theme-demo='glass']
+  :global([aria-label='Filter katalog'] button[aria-pressed])
+  > :global(span[aria-hidden='true']) {
+  background: var(--glass-soft-bg) !important;
+}
+
+.glassTheme[data-theme-demo='glass']
+  :global([aria-label='Filter katalog'] button[aria-pressed='true']) {
+  border-color:
+    rgba(255, 255, 255, 0.24) rgba(255, 255, 255, 0.065)
+    rgba(255, 255, 255, 0.045) rgba(255, 255, 255, 0.14) !important;
+  color: var(--glass-text) !important;
+  box-shadow:
+    0 12px 34px rgba(0, 0, 0, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18) !important;
+}
+
+.glassTheme[data-theme-demo='glass']
+  :global([aria-label='Filter katalog'] button[aria-pressed='true'])
+  > :global(span[aria-hidden='true']) {
+  background: var(--glass-bg) !important;
+}
+
+/* Catalog geometry and motion stay production-identical. */
+.glassTheme[data-theme-demo='glass'] :global(main a[href^='/game/']) {
+  border-color:
+    rgba(255, 255, 255, 0.17) rgba(255, 255, 255, 0.04)
+    rgba(255, 255, 255, 0.032) rgba(255, 255, 255, 0.1) !important;
+  background: rgba(255, 255, 255, 0.018) !important;
+  box-shadow:
+    0 16px 42px rgba(0, 0, 0, 0.15),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
+  transform: none !important;
+}
+
+.glassTheme[data-theme-demo='glass'] :global(main a[href^='/game/']:hover),
+.glassTheme[data-theme-demo='glass']
+  :global(main a[href^='/game/']:focus-visible) {
+  border-color:
+    rgba(255, 255, 255, 0.24) rgba(255, 255, 255, 0.06)
+    rgba(255, 255, 255, 0.045) rgba(255, 255, 255, 0.14) !important;
+  box-shadow:
+    0 22px 54px rgba(0, 0, 0, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.14) !important;
+}
+
+.glassTheme[data-theme-demo='glass'] :global(main a[href^='/game/'] img) {
+  filter: none !important;
+}
+
+.glassTheme[data-theme-demo='glass']
+  :global(main a[href^='/game/'])
+  > :global(div[class*='h-[82px]']) {
+  background:
+    radial-gradient(circle at 16% 0%, rgba(255, 255, 255, 0.14), transparent 42%),
+    linear-gradient(145deg, rgba(255, 255, 255, 0.075), rgba(255, 255, 255, 0.018)) !important;
+  box-shadow:
+    0 -12px 30px rgba(0, 0, 0, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12) !important;
+  backdrop-filter: blur(var(--glass-blur-soft)) saturate(135%) !important;
+  -webkit-backdrop-filter: blur(var(--glass-blur-soft)) saturate(135%) !important;
+}
+
+.glassTheme[data-theme-demo='glass'] :global(.catalog-card-shine) {
+  background: linear-gradient(
+    90deg,
+    transparent 36%,
+    rgba(255, 255, 255, 0.035) 42%,
+    rgba(255, 255, 255, 0.3) 50%,
+    rgba(255, 255, 255, 0.06) 57%,
+    transparent 64%
+  ) !important;
+}
+
+.glassTheme[data-theme-demo='glass'] :global(section button[aria-expanded]) {
+  border-color:
+    rgba(255, 255, 255, 0.18) rgba(255, 255, 255, 0.05)
+    rgba(255, 255, 255, 0.038) rgba(255, 255, 255, 0.11) !important;
+  background: var(--glass-bg) !important;
+  box-shadow:
+    var(--glass-shadow-soft),
+    inset 0 1px 0 rgba(255, 255, 255, 0.13) !important;
+  backdrop-filter: blur(var(--glass-blur)) saturate(135%) !important;
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(135%) !important;
+}
+
+/* Strong glass: suggestion banner */
+.glassTheme[data-theme-demo='glass']
+  :global(section[aria-labelledby='catalog-suggestion-title']) {
+  border-style: solid !important;
+  border-width: 1px !important;
+  border-color:
+    rgba(255, 255, 255, 0.23) rgba(255, 255, 255, 0.045)
+    rgba(255, 255, 255, 0.035) rgba(255, 255, 255, 0.14) !important;
+  background: var(--glass-strong-bg) !important;
+  box-shadow:
+    var(--glass-shadow),
+    inset 0 1px 0 rgba(255, 255, 255, 0.17),
+    inset 1px 0 0 rgba(255, 255, 255, 0.05) !important;
+  backdrop-filter: blur(var(--glass-blur-strong)) saturate(142%) !important;
+  -webkit-backdrop-filter: blur(var(--glass-blur-strong)) saturate(142%) !important;
+}
+
+.glassTheme[data-theme-demo='glass']
+  :global(section[aria-labelledby='catalog-suggestion-title'])
+  > :global(div[aria-hidden='true']) {
+  background-image: radial-gradient(
+    ellipse at 12% -5%,
+    rgba(255, 255, 255, 0.14),
+    rgba(255, 255, 255, 0.018) 38%,
+    transparent 68%
+  ) !important;
+}
+
+.glassTheme[data-theme-demo='glass']
+  :global(section[aria-labelledby='catalog-suggestion-title'])
+  :global(a) {
+  border-color:
+    rgba(255, 255, 255, 0.22) rgba(255, 255, 255, 0.06)
+    rgba(255, 255, 255, 0.045) rgba(255, 255, 255, 0.13) !important;
+  background: var(--glass-bg) !important;
+  box-shadow:
+    0 12px 34px rgba(0, 0, 0, 0.13),
+    inset 0 1px 0 rgba(255, 255, 255, 0.16) !important;
+}
+
+.glassTheme[data-theme-demo='glass']
+  :global(section[aria-labelledby='catalog-suggestion-title'])
+  :global(#box-side stop),
+.glassTheme[data-theme-demo='glass']
+  :global(section[aria-labelledby='catalog-suggestion-title'])
+  :global(#glass-lens stop) {
+  stop-color: rgba(255, 255, 255, 0.16) !important;
+}
+
+.glassTheme[data-theme-demo='glass']
+  :global(section[aria-labelledby='catalog-suggestion-title'])
+  :global([fill*='59,130,246']),
+.glassTheme[data-theme-demo='glass']
+  :global(section[aria-labelledby='catalog-suggestion-title'])
+  :global([fill*='168,85,247']) {
+  fill: rgba(255, 255, 255, 0.075) !important;
+}
+
+/* Strong panel and soft pills; footer grid remains visible. */
+.glassTheme[data-theme-demo='glass'] :global(.footer-glass-surface) {
+  border-style: solid !important;
+  border-width: 1px !important;
+  border-color:
+    rgba(255, 255, 255, 0.22) rgba(255, 255, 255, 0.045)
+    rgba(255, 255, 255, 0.032) rgba(255, 255, 255, 0.13) !important;
+  background: var(--glass-strong-bg) !important;
+  box-shadow:
+    0 26px 64px -34px rgba(0, 0, 0, 0.52),
+    inset 0 1px 0 rgba(255, 255, 255, 0.17),
+    inset 1px 0 0 rgba(255, 255, 255, 0.05) !important;
+  backdrop-filter: blur(var(--glass-blur-strong)) saturate(140%) !important;
+  -webkit-backdrop-filter: blur(var(--glass-blur-strong)) saturate(140%) !important;
+}
+
+.glassTheme[data-theme-demo='glass']
+  :global(.footer-glass-surface)
+  :global(p),
+.glassTheme[data-theme-demo='glass']
+  :global(.footer-glass-surface)
+  :global(a),
+.glassTheme[data-theme-demo='glass']
+  :global(.footer-glass-surface)
+  :global(span) {
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.34);
+}
+
+.glassTheme[data-theme-demo='glass'] :global(.footer-glass-pill) {
+  border-color:
+    rgba(255, 255, 255, 0.16) rgba(255, 255, 255, 0.04)
+    rgba(255, 255, 255, 0.03) rgba(255, 255, 255, 0.095) !important;
+  background: var(--glass-soft-bg) !important;
+  box-shadow:
+    0 10px 28px -14px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.11) !important;
+  backdrop-filter: blur(var(--glass-blur-soft)) saturate(130%) !important;
+  -webkit-backdrop-filter: blur(var(--glass-blur-soft)) saturate(130%) !important;
+}
+
+.glassTheme[data-theme-demo='glass'] :global(.footer-glass-pill:hover) {
+  border-color:
+    rgba(255, 255, 255, 0.25) rgba(255, 255, 255, 0.065)
+    rgba(255, 255, 255, 0.045) rgba(255, 255, 255, 0.14) !important;
+  background-color: rgba(255, 255, 255, 0.035) !important;
+  box-shadow:
+    0 14px 34px -16px rgba(0, 0, 0, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.17) !important;
+}
+
+.glassTheme[data-theme-demo='glass']
+  :global(.cinematic-footer-wrapper span[class*='rounded-full']) {
+  border-color:
+    rgba(255, 255, 255, 0.15) rgba(255, 255, 255, 0.04)
+    rgba(255, 255, 255, 0.03) rgba(255, 255, 255, 0.09) !important;
+  background: var(--glass-soft-bg) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.09);
+}
+
+.glassTheme[data-theme-demo='glass']
+  :global(.cinematic-footer-wrapper)
+  > :global(div[class*='-rotate-[3deg]']) {
+  border-color:
+    rgba(255, 255, 255, 0.2) rgba(255, 255, 255, 0.06)
+    rgba(255, 255, 255, 0.05) rgba(255, 255, 255, 0.13) !important;
+  background:
+    radial-gradient(ellipse at 14% 0%, rgba(255, 255, 255, 0.1), transparent 34%),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.012)) !important;
+  box-shadow:
+    0 16px 44px rgba(0, 0, 0, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.14) !important;
+  backdrop-filter: blur(var(--glass-blur)) saturate(135%) !important;
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(135%) !important;
+}
+
+@media (max-width: 639px) {
+  .glassTheme[data-theme-demo='glass'] .demoIndicator {
+    right: 0.75rem;
+    bottom: 0.75rem;
+    width: calc(100vw - 1.5rem);
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding-left: 0.7rem;
+  }
+
+  .glassTheme[data-theme-demo='glass'] .demoLabel {
+    font-size: 0.5625rem;
+  }
+
+  .glassTheme[data-theme-demo='glass'] .backLink {
+    padding-inline: 0.65rem;
+    font-size: 0.625rem;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .glassTheme[data-theme-demo='glass'] {
+    --glass-soft-bg: rgba(24, 24, 26, 0.9);
+    --glass-bg: rgba(28, 28, 30, 0.92);
+    --glass-strong-bg: rgba(32, 32, 34, 0.94);
+  }
+}
