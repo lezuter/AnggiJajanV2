@@ -20,6 +20,7 @@ func SetupRoutes(app *fiber.App) {
 	api.Get("/catalogs/:slug", controllers.GetCatalogBySlug)
 	api.Get("/products", controllers.GetProducts)
 	api.Get("/banners", controllers.GetPublicBanners)
+	api.Get("/payment-methods", controllers.GetPaymentMethods)
 	api.Post("/checkout", controllers.Checkout)
 	api.Post("/callback", controllers.TripayCallbackHandler)
 	api.Post("/webhook/digiflazz", controllers.DigiflazzWebhookHandler)
