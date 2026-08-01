@@ -24,8 +24,9 @@ import (
 )
 
 const (
-	duitkuSandboxBaseURL    = "https://sandbox.duitku.com"
-	duitkuProductionBaseURL = "https://passport.duitku.com"
+	duitkuSandboxBaseURL           = "https://sandbox.duitku.com"
+	duitkuProductionBaseURL        = "https://passport.duitku.com"
+	duitkuMinimumTransactionAmount = 10000
 )
 
 type duitkuPaymentMethodRequest struct {
@@ -64,10 +65,11 @@ type paymentMethodOption struct {
 }
 
 type duitkuFeeRule struct {
-	Category   string
-	PercentFee float64
-	FlatFee    float64
-	MinAmount  float64
+	Category                 string
+	PercentFee               float64
+	FlatFee                  float64
+	MinAmount                float64
+	RequiresFeeConfiguration bool
 }
 
 // Estimasi ini dipakai untuk menjaga margin sebelum transaksi dibuat.
@@ -106,6 +108,14 @@ var duitkuFeeRules = map[string]duitkuFeeRule{
 	// Lainnya
 	"VC": {Category: "CREDIT_CARD", PercentFee: 2.9, FlatFee: 2500, MinAmount: 50000},
 	"FT": {Category: "RETAIL", FlatFee: 2500, MinAmount: 10000},
+	// Indomaret mengenakan Rp1.000 + MDR yang nilainya ditentukan oleh Indomaret.
+	// Channel dikenali, tetapi tetap disabled sampai komponen MDR dikonfigurasi.
+	"IR": {
+		Category:                 "RETAIL",
+		FlatFee:                  1000,
+		MinAmount:                10000,
+		RequiresFeeConfiguration: true,
+	},
 	"DN": {Category: "PAYLATER", PercentFee: 2.3, MinAmount: 10000},
 	"AT": {Category: "PAYLATER", PercentFee: 5.5, MinAmount: 10000},
 	"JP": {Category: "E_BANKING", PercentFee: 2, MinAmount: 1},
@@ -253,12 +263,17 @@ func estimateDuitkuMerchantFee(
 	}
 
 	fee = rule.FlatFee + (amount * rule.PercentFee / 100)
-	return math.Ceil(fee), rule.Category, rule.MinAmount, true
+	minimumAmount = math.Max(duitkuMinimumTransactionAmount, rule.MinAmount)
+
+	return math.Ceil(fee),
+		rule.Category,
+		minimumAmount,
+		!rule.RequiresFeeConfiguration
 }
 
-// Net profit minimum bersifat adaptif: channel lolos jika memenuhi batas
-// nominal minimum ATAU mempertahankan persentase profit yang ditentukan.
-// Dengan begitu, produk kecil tidak otomatis kehilangan QRIS.
+// Setelah batas minimum gateway terpenuhi, net profit minimum bersifat
+// adaptif: channel lolos jika memenuhi batas nominal minimum ATAU
+// mempertahankan persentase profit yang ditentukan.
 func isPaymentMethodAllowed(
 	grossProfit float64,
 	merchantFee float64,
@@ -388,7 +403,9 @@ func GetPaymentMethods(c *fiber.Ctx) error {
 		merchantFee, category, minimumAmount, configured :=
 			estimateDuitkuMerchantFee(code, productAmount)
 
-		enabled := configured &&
+		globalMinimumMet := productAmount >= duitkuMinimumTransactionAmount
+		enabled := globalMinimumMet &&
+			configured &&
 			productAmount >= minimumAmount &&
 			isPaymentMethodAllowed(
 				grossProfit,
@@ -399,6 +416,10 @@ func GetPaymentMethods(c *fiber.Ctx) error {
 
 		disabledReason := ""
 		switch {
+		case !globalMinimumMet:
+			disabledReason = "Minimum transaksi Duitku Rp10.000."
+		case !configured && category != "OTHER":
+			disabledReason = "Biaya metode ini belum dikonfigurasi."
 		case !configured:
 			disabledReason = "Metode ini belum tersedia."
 		case productAmount < minimumAmount:
@@ -441,9 +462,10 @@ func GetPaymentMethods(c *fiber.Ctx) error {
 	})
 
 	return c.JSON(fiber.Map{
-		"payment_provider": "duitku",
-		"fee_bearer":       feeBearer,
-		"product_amount":   productAmount,
-		"methods":          options,
+		"payment_provider":           "duitku",
+		"fee_bearer":                 feeBearer,
+		"product_amount":             productAmount,
+		"minimum_transaction_amount": duitkuMinimumTransactionAmount,
+		"methods":                    options,
 	})
 }

@@ -18,7 +18,7 @@ func TestEstimateDuitkuMerchantFee(t *testing.T) {
 			amount:       100000,
 			expectedFee:  700,
 			expectedType: "QRIS",
-			expectedMin:  1,
+			expectedMin:  10000,
 			configured:   true,
 		},
 		{
@@ -29,6 +29,15 @@ func TestEstimateDuitkuMerchantFee(t *testing.T) {
 			expectedType: "VIRTUAL_ACCOUNT",
 			expectedMin:  10000,
 			configured:   true,
+		},
+		{
+			name:         "Indomaret requires MDR configuration",
+			code:         "IR",
+			amount:       100000,
+			expectedFee:  1000,
+			expectedType: "RETAIL",
+			expectedMin:  10000,
+			configured:   false,
 		},
 		{
 			name:         "unknown method",
