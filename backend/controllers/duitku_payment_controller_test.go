@@ -140,3 +140,68 @@ func TestFirstNonEmpty(t *testing.T) {
 		t.Fatalf("got = %q, expected %q", got, "nilai")
 	}
 }
+
+func TestDuitkuCallbackSignature(t *testing.T) {
+	const (
+		merchantCode    = "DS32830"
+		amount          = "10000"
+		merchantOrderID = "INV-TEST-001"
+		apiKey          = "sandbox-secret"
+	)
+
+	signature := duitkuHMACSHA256(
+		merchantCode+amount+merchantOrderID,
+		apiKey,
+	)
+
+	if !isValidDuitkuCallbackSignature(
+		merchantCode,
+		amount,
+		merchantOrderID,
+		signature,
+		apiKey,
+	) {
+		t.Fatal("signature yang benar ditolak")
+	}
+
+	if isValidDuitkuCallbackSignature(
+		merchantCode,
+		amount,
+		merchantOrderID,
+		"invalid",
+		apiKey,
+	) {
+		t.Fatal("signature yang salah diterima")
+	}
+}
+
+func TestParseDuitkuCallbackAmount(t *testing.T) {
+	tests := []struct {
+		value    string
+		expected int64
+		valid    bool
+	}{
+		{value: "10000", expected: 10000, valid: true},
+		{value: "10000.00", expected: 10000, valid: true},
+		{value: "10000.50", expected: 0, valid: false},
+		{value: "0", expected: 0, valid: false},
+	}
+
+	for _, test := range tests {
+		got, err := parseDuitkuCallbackAmount(test.value)
+		if test.valid && err != nil {
+			t.Fatalf("value %q ditolak: %v", test.value, err)
+		}
+		if !test.valid && err == nil {
+			t.Fatalf("value %q seharusnya ditolak", test.value)
+		}
+		if test.valid && got != test.expected {
+			t.Fatalf(
+				"value %q menghasilkan %d, expected %d",
+				test.value,
+				got,
+				test.expected,
+			)
+		}
+	}
+}
