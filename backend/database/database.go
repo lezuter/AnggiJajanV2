@@ -88,6 +88,10 @@ func Connect() {
 		log.Fatal("Gagal migrasi lifecycle produk: ", err)
 	}
 
+	if err := migratePaymentFoundation(); err != nil {
+		log.Fatal("Gagal migrasi fondasi payment: ", err)
+	}
+
 	// 2. [BARU] EKSEKUSI MIGRASI DATA TRANSAKSI LAMA
 	fmt.Println("🔄 Memulai migrasi pemisahan log error transaksi lama...")
 	// Pindahin sn ke serial_number buat yang sukses
@@ -99,12 +103,8 @@ func Connect() {
 	fmt.Println("✅ Data transaksi lama berhasil dipisahkan!")
 
 	// 3. SEEDING DEFAULT SETTINGS
-	var count int64
-	DB.Model(&models.Setting{}).Count(&count)
-	if count == 0 {
-		fmt.Println("🌱 Seeding Default Settings...")
-		DB.Create(&models.Setting{Key: "margin_percent", Value: "5"})
-		DB.Create(&models.Setting{Key: "flat_fee", Value: "0"})
+	if err := seedDefaultSettings(); err != nil {
+		log.Fatal("❌ Gagal seeding default settings: ", err)
 	}
 
 	fmt.Println("✅ Database Preparation Complete!")
@@ -214,4 +214,73 @@ func migrateProductLifecycle() error {
 		result.RowsAffected,
 	)
 	return nil
+}
+
+// migratePaymentFoundation hanya melakukan backfill metadata payment lama.
+// Migrasi ini idempotent dan tidak menghapus, mereset, atau mengubah nominal
+// transaksi yang sudah ada.
+func migratePaymentFoundation() error {
+	return DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec(`
+			UPDATE transactions
+			SET payment_provider = 'tripay'
+			WHERE COALESCE(BTRIM(payment_provider), '') = ''
+		`).Error; err != nil {
+			return err
+		}
+
+		if err := tx.Exec(`
+			UPDATE transactions
+			SET payment_reference = reference
+			WHERE COALESCE(BTRIM(payment_reference), '') = ''
+			  AND COALESCE(BTRIM(reference), '') <> ''
+		`).Error; err != nil {
+			return err
+		}
+
+		// Kita tidak boleh menganggap fee transaksi historis ditanggung merchant
+		// atau customer tanpa data yang mendukung, jadi tandai UNKNOWN.
+		if err := tx.Exec(`
+			UPDATE transactions
+			SET payment_fee_bearer = 'UNKNOWN'
+			WHERE COALESCE(BTRIM(payment_fee_bearer), '') = ''
+		`).Error; err != nil {
+			return err
+		}
+
+		return nil
+	})
+}
+
+// seedDefaultSettings menambahkan setting yang belum ada tanpa menimpa value
+// yang sudah pernah diubah admin.
+func seedDefaultSettings() error {
+	defaultSettings := []models.Setting{
+		{Key: "margin_percent", Value: "5"},
+		{Key: "flat_fee", Value: "0"},
+		{Key: "payment_gateway", Value: "duitku"},
+		{Key: "payment_fee_bearer", Value: "MERCHANT"},
+		{Key: "minimum_net_profit", Value: "1500"},
+		{Key: "minimum_profit_retention_percent", Value: "50"},
+	}
+
+	fmt.Println("🌱 Ensuring Default Settings...")
+
+	return DB.Transaction(func(tx *gorm.DB) error {
+		for _, defaultSetting := range defaultSettings {
+			setting := defaultSetting
+
+			if err := tx.
+				Where("key = ?", setting.Key).
+				FirstOrCreate(&setting).Error; err != nil {
+				return fmt.Errorf(
+					"gagal memastikan setting %s: %w",
+					setting.Key,
+					err,
+				)
+			}
+		}
+
+		return nil
+	})
 }

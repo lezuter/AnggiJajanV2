@@ -152,9 +152,21 @@ type Transaction struct {
 	ErrorMessage      string `json:"error_message"`
 	ErrorCode         string `json:"error_code"`
 
-	PaymentMethod string `json:"payment_method"`
-	PaymentURL    string `json:"payment_url"`
-	Reference     string `json:"reference"` // Payment/external/manual reference, jangan dicampur label UI
+	// --- PAYMENT SNAPSHOT ---
+	// Dipisahkan dari Provider* karena Provider* khusus fulfillment/top-up
+	// seperti Digiflazz, ApiGames, atau manual.
+	PaymentProvider     string   `json:"payment_provider" gorm:"size:30;index"`
+	PaymentMethod       string   `json:"payment_method"`
+	PaymentURL          string   `json:"payment_url"`
+	PaymentReference    string   `json:"payment_reference" gorm:"size:100;index"`
+	PaymentFeeBearer    string   `json:"payment_fee_bearer" gorm:"size:20;index"`
+	PaymentFeeEstimated float64  `json:"payment_fee_estimated" gorm:"not null;default:0"`
+	PaymentFeeActual    *float64 `json:"payment_fee_actual"`
+	NetProfitEstimated  float64  `json:"net_profit_estimated" gorm:"not null;default:0"`
+	NetProfitActual     *float64 `json:"net_profit_actual"`
+
+	// Legacy/external reference. Dipertahankan sementara agar flow lama tidak rusak.
+	Reference string `json:"reference"`
 
 	// --- PROVIDER SNAPSHOT (Audit Multi-Provider) ---
 	Provider     string `json:"provider" gorm:"index"`     // digiflazz / apigames / manual
@@ -188,23 +200,30 @@ type MinimalProductDTO struct {
 }
 
 type TransactionListDTO struct {
-	ID                uint              `json:"ID"`
-	CreatedAt         time.Time         `json:"CreatedAt"`
-	UpdatedAt         time.Time         `json:"UpdatedAt"` // 🔥 BALIKIN INI
-	InvoiceID         string            `json:"invoice_id"`
-	CustomerPhone     string            `json:"customer_phone"`
-	Product           MinimalProductDTO `json:"Product"`
-	Amount            float64           `json:"amount"`
-	Capital           float64           `json:"capital"` // 🔥 BALIKIN INI
-	Profit            float64           `json:"profit"`
-	PaymentMethod     string            `json:"payment_method"`
-	PaymentURL        string            `json:"payment_url"` // 🔥 BALIKIN INI
-	Reference         string            `json:"reference"`
-	Status            string            `json:"status"`
-	PaymentStatus     string            `json:"payment_status,omitempty"`
-	FulfillmentStatus string            `json:"fulfillment_status,omitempty"`
-	DigiStatus        string            `json:"digi_status"`
-	SN                string            `json:"sn"`
+	ID                  uint              `json:"ID"`
+	CreatedAt           time.Time         `json:"CreatedAt"`
+	UpdatedAt           time.Time         `json:"UpdatedAt"` // 🔥 BALIKIN INI
+	InvoiceID           string            `json:"invoice_id"`
+	CustomerPhone       string            `json:"customer_phone"`
+	Product             MinimalProductDTO `json:"Product"`
+	Amount              float64           `json:"amount"`
+	Capital             float64           `json:"capital"` // 🔥 BALIKIN INI
+	Profit              float64           `json:"profit"`
+	PaymentMethod       string            `json:"payment_method"`
+	PaymentProvider     string            `json:"payment_provider"`
+	PaymentURL          string            `json:"payment_url"` // 🔥 BALIKIN INI
+	PaymentReference    string            `json:"payment_reference"`
+	PaymentFeeBearer    string            `json:"payment_fee_bearer"`
+	PaymentFeeEstimated float64           `json:"payment_fee_estimated"`
+	PaymentFeeActual    *float64          `json:"payment_fee_actual"`
+	NetProfitEstimated  float64           `json:"net_profit_estimated"`
+	NetProfitActual     *float64          `json:"net_profit_actual"`
+	Reference           string            `json:"reference"`
+	Status              string            `json:"status"`
+	PaymentStatus       string            `json:"payment_status,omitempty"`
+	FulfillmentStatus   string            `json:"fulfillment_status,omitempty"`
+	DigiStatus          string            `json:"digi_status"`
+	SN                  string            `json:"sn"`
 
 	// --- PROVIDER AUDIT FIELDS ---
 	Provider     string `json:"provider"`
