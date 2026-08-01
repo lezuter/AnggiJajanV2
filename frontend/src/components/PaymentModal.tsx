@@ -1,15 +1,21 @@
 'use client'
 
-import Image from 'next/image'
 import { useRouter } from 'next/navigation'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 interface PaymentData {
   merchant_ref?: string
+  merchant_order_id?: string
   reference?: string
-  qr_url?: string
   checkout_url?: string
+  payment_url?: string
+  app_url?: string
+  va_number?: string
+  qr_string?: string
   amount?: number
+  payment_method?: string
+  payment_name?: string
+  payment_provider?: string
 }
 
 interface PaymentModalProps {
@@ -37,12 +43,22 @@ export default function PaymentModal ({
   const previousFocusRef = useRef<HTMLElement | null>(null)
   const [status, setStatus] = useState('UNPAID')
   const [sn, setSn] = useState('')
+  const [copied, setCopied] = useState(false)
+
+  const paymentURL = useMemo(
+    () => data?.checkout_url || data?.payment_url || '',
+    [data]
+  )
+  const merchantReference = data?.merchant_ref || data?.merchant_order_id || ''
+  const paymentName =
+    data?.payment_name || data?.payment_method || 'Pembayaran Duitku'
 
   useEffect(() => {
     if (!isOpen) return
 
     setStatus('UNPAID')
     setSn('')
+    setCopied(false)
   }, [isOpen])
 
   useEffect(() => {
@@ -71,7 +87,15 @@ export default function PaymentModal ({
   }, [isOpen, onClose])
 
   useEffect(() => {
-    if (!isOpen || !data || status === 'PAID' || status === 'FAILED') return
+    if (
+      !isOpen ||
+      !data ||
+      !merchantReference ||
+      status === 'PAID' ||
+      status === 'FAILED'
+    ) {
+      return
+    }
 
     let cancelled = false
     let timeoutId: number | undefined
@@ -82,11 +106,16 @@ export default function PaymentModal ({
           ? `?reference=${encodeURIComponent(data.reference)}`
           : ''
         const response = await fetch(
-          `${API_BASE_URL}/transaction/${data.merchant_ref}${referenceQuery}`
+          `${API_BASE_URL}/transaction/${encodeURIComponent(
+            merchantReference
+          )}${referenceQuery}`,
+          { cache: 'no-store' }
         )
 
         if (!response.ok) {
-          throw new Error(`Status transaksi gagal dimuat: HTTP ${response.status}`)
+          throw new Error(
+            `Status transaksi gagal dimuat: HTTP ${response.status}`
+          )
         }
 
         const result = (await response.json()) as TransactionStatusResponse
@@ -119,9 +148,21 @@ export default function PaymentModal ({
       cancelled = true
       if (timeoutId !== undefined) window.clearTimeout(timeoutId)
     }
-  }, [isOpen, data, status])
+  }, [isOpen, data, merchantReference, status])
 
   if (!isOpen || !data) return null
+
+  const copyVANumber = async () => {
+    if (!data.va_number) return
+
+    try {
+      await navigator.clipboard.writeText(data.va_number)
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 1800)
+    } catch {
+      setCopied(false)
+    }
+  }
 
   return (
     <div
@@ -166,20 +207,20 @@ export default function PaymentModal ({
           {status === 'UNPAID' && (
             <>
               <p className='font-mono text-[10px] uppercase tracking-[0.12em] text-white/[0.42]'>
-                Pembayaran QRIS
+                {data.payment_provider || 'Duitku'} Â· {paymentName}
               </p>
               <h2
                 id='payment-modal-title'
                 className='mt-3 pr-10 text-[28px] font-medium leading-tight tracking-[-0.035em] text-white'
               >
-                Menunggu pembayaran
+                Lanjutkan pembayaran
               </h2>
               <p
                 id='payment-modal-description'
                 className='mt-2 text-sm leading-6 text-white/[0.5]'
               >
-                Pindai kode QR menggunakan aplikasi pembayaran yang mendukung
-                QRIS.
+                Buka halaman pembayaran aman Duitku, lalu selesaikan transaksi
+                menggunakan metode yang dipilih.
               </p>
 
               <div className='mt-6 rounded-[18px] border border-white/[0.08] bg-white/[0.025] p-4'>
@@ -190,26 +231,55 @@ export default function PaymentModal ({
                   Rp {data.amount ? data.amount.toLocaleString('id-ID') : '0'}
                 </p>
                 <p className='mt-2 break-all font-mono text-[10px] text-white/[0.34]'>
-                  {data.merchant_ref}
+                  {merchantReference}
                 </p>
               </div>
 
-              <div className='mt-5 inline-block rounded-[20px] bg-white p-3 shadow-[0_18px_50px_rgba(0,0,0,0.28)] sm:p-4'>
-                {data.qr_url ? (
-                  <Image
-                    src={data.qr_url}
-                    alt='Kode QRIS pembayaran'
-                    width={200}
-                    height={200}
-                    className='mx-auto h-48 w-48 sm:h-[200px] sm:w-[200px]'
-                    unoptimized
-                  />
-                ) : (
-                  <div className='flex h-48 w-48 items-center justify-center text-sm text-black/[0.58] sm:h-[200px] sm:w-[200px]'>
-                    Memuat kode QR...
-                  </div>
-                )}
-              </div>
+              {data.va_number && (
+                <button
+                  type='button'
+                  onClick={copyVANumber}
+                  className='mt-4 w-full rounded-[18px] border border-white/[0.08] bg-white/[0.025] p-4 text-left outline-none transition-colors hover:border-white/[0.16] hover:bg-white/[0.045] focus-visible:ring-2 focus-visible:ring-fuchsia-400/70'
+                >
+                  <span className='font-mono text-[9px] uppercase tracking-[0.1em] text-white/[0.4]'>
+                    Nomor pembayaran
+                  </span>
+                  <span className='mt-2 flex items-center justify-between gap-3'>
+                    <span className='break-all font-mono text-sm text-white/[0.82]'>
+                      {data.va_number}
+                    </span>
+                    <span className='shrink-0 text-xs text-fuchsia-200'>
+                      {copied ? 'Tersalin' : 'Salin'}
+                    </span>
+                  </span>
+                </button>
+              )}
+
+              {paymentURL ? (
+                <a
+                  href={paymentURL}
+                  target='_blank'
+                  rel='noreferrer'
+                  className='mt-5 inline-flex min-h-12 w-full items-center justify-center rounded-full border border-white bg-white px-6 text-sm font-semibold text-black outline-none transition-[border-color,background-color,box-shadow] duration-300 hover:border-fuchsia-300 hover:bg-fuchsia-300 hover:shadow-[0_12px_34px_rgba(217,70,239,0.18)] focus-visible:ring-2 focus-visible:ring-fuchsia-400/70'
+                >
+                  Buka halaman pembayaran
+                </a>
+              ) : (
+                <div className='mt-5 rounded-[18px] border border-rose-300/20 bg-rose-300/[0.06] p-4 text-sm leading-6 text-rose-100'>
+                  Tautan pembayaran tidak tersedia.
+                </div>
+              )}
+
+              {data.app_url && data.app_url !== paymentURL && (
+                <a
+                  href={data.app_url}
+                  target='_blank'
+                  rel='noreferrer'
+                  className='mt-3 inline-flex min-h-11 w-full items-center justify-center rounded-full border border-white/[0.1] bg-white/[0.035] px-5 text-sm font-medium text-white outline-none transition-colors hover:border-fuchsia-300/50 hover:bg-fuchsia-400/[0.08] focus-visible:ring-2 focus-visible:ring-fuchsia-400/70'
+                >
+                  Buka aplikasi pembayaran
+                </a>
+              )}
 
               <p className='mt-5 inline-flex items-center gap-2 text-xs text-white/[0.4]'>
                 <span
@@ -304,7 +374,7 @@ export default function PaymentModal ({
                 id='payment-modal-description'
                 className='mt-2 text-sm leading-6 text-white/[0.5]'
               >
-                Pembayaran kedaluwarsa atau dibatalkan.
+                Pembayaran kedaluwarsa, dibatalkan, atau gagal diproses.
               </p>
 
               <button

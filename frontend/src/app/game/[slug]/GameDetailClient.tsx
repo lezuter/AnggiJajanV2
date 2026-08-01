@@ -10,6 +10,9 @@ import AccountTargetFields from '@/components/game-purchase/AccountTargetFields'
 import CheckoutStepper from '@/components/game-purchase/CheckoutStepper'
 import GamePurchaseHero from '@/components/game-purchase/GamePurchaseHero'
 import OrderSummary from '@/components/game-purchase/OrderSummary'
+import PaymentMethodSelector, {
+  type PaymentMethodOption
+} from '@/components/game-purchase/PaymentMethodSelector'
 import ProductSelector, {
   type PurchaseProduct,
   type PurchaseProductSection
@@ -56,10 +59,25 @@ interface Catalog extends CatalogMetadata {
 
 interface CheckoutData {
   merchant_ref?: string
+  merchant_order_id?: string
   reference?: string
-  qr_url?: string
   checkout_url?: string
+  payment_url?: string
+  app_url?: string
+  va_number?: string
+  qr_string?: string
   amount?: number
+  payment_method?: string
+  payment_name?: string
+  payment_provider?: string
+}
+
+interface PaymentMethodsResponse {
+  payment_provider: string
+  fee_bearer: string
+  product_amount: number
+  minimum_transaction_amount: number
+  methods: PaymentMethodOption[]
 }
 
 const API_BASE_URL = (
@@ -219,7 +237,10 @@ export default function GameDetailClient ({ slug }: { slug: string }) {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null)
   const [accountWarning, setAccountWarning] = useState(false)
   const [accountAttention, setAccountAttention] = useState(false)
-  const [paymentMethod] = useState('QRIS')
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethodOption[]>([])
+  const [paymentMethodsLoading, setPaymentMethodsLoading] = useState(false)
+  const [paymentMethodsError, setPaymentMethodsError] = useState('')
+  const [paymentMethod, setPaymentMethod] = useState('')
   const [isProcessing, setIsProcessing] = useState(false)
   const [showModal, setShowModal] = useState(false)
   const [transactionData, setTransactionData] = useState<CheckoutData | null>(
@@ -240,6 +261,10 @@ export default function GameDetailClient ({ slug }: { slug: string }) {
     setSelectedProduct(null)
     setAccountWarning(false)
     setAccountAttention(false)
+    setPaymentMethods([])
+    setPaymentMethodsLoading(false)
+    setPaymentMethodsError('')
+    setPaymentMethod('')
     setShowModal(false)
     setTransactionData(null)
   }, [slug])
@@ -324,6 +349,82 @@ export default function GameDetailClient ({ slug }: { slug: string }) {
     fetchGameData()
   }, [publicCatalog, slug])
 
+  useEffect(() => {
+    if (!PURCHASES_ENABLED || !selectedProduct) {
+      setPaymentMethods([])
+      setPaymentMethodsLoading(false)
+      setPaymentMethodsError('')
+      setPaymentMethod('')
+      return
+    }
+
+    const controller = new AbortController()
+
+    const fetchPaymentMethods = async () => {
+      setPaymentMethods([])
+      setPaymentMethodsLoading(true)
+      setPaymentMethodsError('')
+      setPaymentMethod('')
+
+      try {
+        const response = await fetch(
+          `${API_BASE_URL}/payment-methods?product_id=${selectedProduct.ID}`,
+          {
+            cache: 'no-store',
+            signal: controller.signal
+          }
+        )
+        const result = (await response.json()) as PaymentMethodsResponse & {
+          error?: string
+          reason?: string
+        }
+
+        if (!response.ok) {
+          throw new Error(
+            result.reason ||
+              result.error ||
+              'Metode pembayaran belum bisa dimuat.'
+          )
+        }
+
+        const safeMethods = Array.isArray(result.methods) ? result.methods : []
+        const availableMethods = safeMethods.filter(method => method.enabled)
+        const recommendedMethod =
+          availableMethods.find(method => method.recommended) ||
+          availableMethods[0]
+
+        setPaymentMethods(safeMethods)
+        setPaymentMethod(recommendedMethod?.code || '')
+
+        if (availableMethods.length === 0) {
+          const reason =
+            safeMethods.find(method => method.disabled_reason)
+              ?.disabled_reason ||
+            `Minimum transaksi Rp${result.minimum_transaction_amount.toLocaleString(
+              'id-ID'
+            )}.`
+
+          setPaymentMethodsError(reason)
+        }
+      } catch (error) {
+        if (controller.signal.aborted) return
+
+        setPaymentMethodsError(
+          error instanceof Error
+            ? error.message
+            : 'Metode pembayaran belum bisa dimuat.'
+        )
+      } finally {
+        if (!controller.signal.aborted) {
+          setPaymentMethodsLoading(false)
+        }
+      }
+    }
+
+    fetchPaymentMethods()
+
+    return () => controller.abort()
+  }, [selectedProduct])
   const selectedTarget = zoneId ? `${userId} (${zoneId})` : userId
   const shortName =
     game?.short_name?.trim() ||
@@ -348,6 +449,11 @@ export default function GameDetailClient ({ slug }: { slug: string }) {
     setAccountAttention(false)
   }, [hasAccountData])
 
+  const selectedPaymentMethod = paymentMethods.find(
+    method => method.code === paymentMethod
+  )
+  const paymentMethodLabel =
+    selectedPaymentMethod?.name || 'Belum dipilih'
   const totalLabel = selectedProduct
     ? formatIDR(getProductSellingPrice(selectedProduct))
     : 'Belum tersedia'
@@ -355,7 +461,10 @@ export default function GameDetailClient ({ slug }: { slug: string }) {
     PURCHASES_ENABLED &&
     Boolean(selectedProduct) &&
     Boolean(userId) &&
-    (!requiresZone || Boolean(zoneId))
+    (!requiresZone || Boolean(zoneId)) &&
+    Boolean(paymentMethod) &&
+    !paymentMethodsLoading &&
+    !paymentMethodsError
   const disabledReason = !PURCHASES_ENABLED
     ? 'Katalog masih dapat dilihat dalam mode preview.'
     : !userId
@@ -364,6 +473,12 @@ export default function GameDetailClient ({ slug }: { slug: string }) {
     ? 'Masukkan Zone ID untuk melanjutkan.'
     : !selectedProduct
     ? 'Pilih nominal untuk melanjutkan.'
+    : paymentMethodsLoading
+    ? 'Metode pembayaran sedang dimuat.'
+    : paymentMethodsError
+    ? paymentMethodsError
+    : !paymentMethod
+    ? 'Pilih metode pembayaran untuk melanjutkan.'
     : ''
 
   const handleSelectProduct = (product: Product) => {
@@ -441,7 +556,12 @@ export default function GameDetailClient ({ slug }: { slug: string }) {
         setTransactionData((result.data || result) as CheckoutData)
         setShowModal(true)
       } else {
-        alert('Gagal: ' + (result.error || 'Checkout belum berhasil.'))
+        alert(
+          'Gagal: ' +
+            (result.reason ||
+              result.error ||
+              'Checkout belum berhasil.')
+        )
       }
     } catch {
       alert('Terjadi kesalahan sistem.')
@@ -598,52 +718,14 @@ export default function GameDetailClient ({ slug }: { slug: string }) {
                 onSelect={handleSelectProduct}
               />
 
-              <section
-                aria-labelledby='payment-method-title'
-                className='rounded-[24px] border border-white/[0.08] bg-black/[0.035] p-5 shadow-[0_22px_70px_rgba(0,0,0,0.22)] backdrop-blur-md backdrop-saturate-150 sm:p-7'
-              >
-                <div>
-                  <p className='font-mono text-[10px] uppercase tracking-[0.12em] text-white/[0.42]'>
-                    Pembayaran
-                  </p>
-                  <h2
-                    id='payment-method-title'
-                    className='mt-2 text-2xl font-medium tracking-[-0.03em] text-white sm:text-[30px]'
-                  >
-                    Metode pembayaran
-                  </h2>
-                </div>
-
-                <div className='mt-7 flex items-start justify-between gap-5 rounded-[18px] border border-white/[0.1] bg-white/[0.03] p-5'>
-                  <div>
-                    <p className='text-base font-medium text-white'>QRIS</p>
-                    <p className='mt-2 max-w-lg text-sm leading-6 text-white/[0.48]'>
-                      Bayar melalui aplikasi bank dan dompet digital yang
-                      mendukung QRIS.
-                    </p>
-                  </div>
-                  <span
-                    aria-label='Metode pembayaran dipilih'
-                    className='flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-fuchsia-300/70 bg-fuchsia-400 text-black'
-                  >
-                    <svg
-                      viewBox='0 0 20 20'
-                      fill='none'
-                      className='h-3.5 w-3.5'
-                      aria-hidden='true'
-                    >
-                      <path
-                        d='m5 10 3.1 3.1L15 6.5'
-                        stroke='currentColor'
-                        strokeLinecap='round'
-                        strokeLinejoin='round'
-                        strokeWidth='2'
-                      />
-                    </svg>
-                  </span>
-                </div>
-              </section>
-
+              <PaymentMethodSelector
+                hasSelectedProduct={Boolean(selectedProduct)}
+                loading={paymentMethodsLoading}
+                error={paymentMethodsError}
+                methods={paymentMethods}
+                selectedCode={paymentMethod}
+                onSelect={setPaymentMethod}
+              />
               <div className='lg:hidden'>
                 <OrderSummary
                   canCheckout={canCheckout}
@@ -654,7 +736,7 @@ export default function GameDetailClient ({ slug }: { slug: string }) {
                     game.name,
                     selectedProduct,
                     selectedTarget,
-                    paymentMethod
+                    paymentMethodLabel
                   )}
                   totalLabel={totalLabel}
                   onCheckout={handleCheckout}
@@ -673,7 +755,7 @@ export default function GameDetailClient ({ slug }: { slug: string }) {
                     game.name,
                     selectedProduct,
                     selectedTarget,
-                    paymentMethod
+                    paymentMethodLabel
                   )}
                   totalLabel={totalLabel}
                   onCheckout={handleCheckout}
