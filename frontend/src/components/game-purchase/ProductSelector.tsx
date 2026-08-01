@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { getProductSellingPrice } from '@/lib/pricing'
 
 export interface PurchaseProduct {
@@ -49,7 +49,7 @@ function ProductThumbnail ({
 
   if (!normalizedImageUrl || hasImageError) {
     return (
-      <span className='inline-flex min-h-9 max-w-[104px] items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.025] px-3 font-mono text-[9px] uppercase tracking-[0.1em] text-white/[0.38]'>
+      <span className='inline-flex min-h-8 max-w-[92px] items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.025] px-2.5 font-mono text-[8px] uppercase tracking-[0.1em] text-white/[0.38]'>
         {code.trim().slice(0, 8) || 'ITEM'}
       </span>
     )
@@ -65,7 +65,7 @@ function ProductThumbnail ({
       loading='lazy'
       decoding='async'
       onError={() => setFailedImageUrl(normalizedImageUrl)}
-      className={`h-[88px] w-[88px] object-contain transition-transform duration-500 ease-out ${
+      className={`h-[72px] w-[72px] object-contain transition-transform duration-500 ease-out ${
         canAnimate ? 'group-hover:scale-[1.04]' : ''
       }`}
     />
@@ -94,6 +94,13 @@ function ProductOption ({
   const discountPercent = hasDiscount
     ? Math.round(((originalPrice - finalPrice) / originalPrice) * 100)
     : 0
+  const productName = product.name.trim()
+  const productNameTypography =
+    productName.length > 64
+      ? 'text-[11px] leading-4'
+      : productName.length > 44
+      ? 'text-xs leading-4'
+      : 'text-[13px] leading-4'
 
   return (
     <button
@@ -104,7 +111,7 @@ function ProductOption ({
         showAccountWarning ? 'account-completion-warning' : undefined
       }
       onClick={() => onSelect(product)}
-      className={`group relative min-h-[230px] overflow-hidden rounded-[18px] border p-4 text-center outline-none transition-[border-color,background-color,box-shadow,opacity,filter] duration-[400ms] ease-[cubic-bezier(0.22,1,0.36,1)] focus-visible:ring-2 focus-visible:ring-fuchsia-400/70 ${
+      className={`group relative flex h-full min-h-[210px] flex-col overflow-hidden rounded-[18px] border p-3.5 text-center outline-none transition-[border-color,background-color,box-shadow,opacity,filter] duration-[400ms] ease-[cubic-bezier(0.22,1,0.36,1)] focus-visible:ring-2 focus-visible:ring-fuchsia-400/70 ${
         !isAccountComplete
           ? 'cursor-not-allowed border-white/[0.08] bg-white/[0.025] opacity-45 saturate-50'
           : isSelected
@@ -114,7 +121,7 @@ function ProductOption ({
     >
       <span
         aria-hidden='true'
-        className={`absolute right-4 top-4 flex h-5 w-5 items-center justify-center rounded-full border transition-colors ${
+        className={`absolute right-3.5 top-3.5 flex h-5 w-5 items-center justify-center rounded-full border transition-colors ${
           isSelected
             ? 'border-fuchsia-300/70 bg-fuchsia-400 text-black'
             : 'border-white/[0.14] bg-transparent text-transparent group-hover:border-white/[0.26]'
@@ -131,7 +138,7 @@ function ProductOption ({
         </svg>
       </span>
 
-      <div className='flex h-[104px] items-center justify-center'>
+      <div className='flex h-[86px] items-center justify-center'>
         <ProductThumbnail
           imageUrl={product.image_url}
           code={product.code}
@@ -139,22 +146,26 @@ function ProductOption ({
         />
       </div>
 
-      <p className='mt-3 line-clamp-2 min-h-10 text-sm font-medium leading-5 text-white sm:text-[15px]'>
-        {product.name}
+      <p
+        title={productName}
+        className={`mt-2.5 min-h-[48px] font-medium text-white [overflow-wrap:anywhere] ${productNameTypography}`}
+      >
+        {productName}
       </p>
 
-      <div className='mt-3'>
-        <p className='text-base font-semibold text-white'>
+      <div className='mt-auto pt-3.5'>
+        <p className='tabular-nums text-base font-semibold tracking-[-0.02em] text-[var(--aj-accent)]'>
           {formatPrice(finalPrice)}
         </p>
 
-        <div className='mt-1.5 flex min-h-5 items-center justify-center gap-2'>
+        <div className='mt-2 flex min-h-5 flex-wrap items-center justify-center gap-x-1.5 gap-y-1'>
           {hasDiscount && (
             <>
-              <span className='text-xs text-white/[0.38] line-through'>
+              <span className='whitespace-nowrap tabular-nums text-[11px] leading-none text-white/[0.34] line-through'>
                 {formatPrice(originalPrice)}
               </span>
-              <span className='rounded-full border border-fuchsia-300/25 bg-fuchsia-400/[0.1] px-2 py-0.5 text-[10px] font-medium text-fuchsia-200'>
+
+              <span className='whitespace-nowrap rounded-full border border-fuchsia-300/25 bg-fuchsia-400/[0.1] px-1.5 py-0.5 text-[9px] font-medium leading-4 text-fuchsia-200'>
                 -{discountPercent}%
               </span>
             </>
@@ -174,14 +185,95 @@ export default function ProductSelector ({
   formatPrice,
   onSelect
 }: ProductSelectorProps) {
-  const visibleSections = sections.filter(section => section.products.length > 0)
+  const visibleSections = useMemo(
+    () => sections.filter(section => section.products.length > 0),
+    [sections]
+  )
+  const selectedSectionKey = visibleSections.find(section =>
+    section.products.some(product => product.ID === selectedProduct?.ID)
+  )?.key
+  const [activeSectionKey, setActiveSectionKey] = useState(
+    selectedSectionKey ?? visibleSections[0]?.key ?? ''
+  )
+  const sectionRefs = useRef<Record<string, HTMLElement | null>>({})
+  const tabRefs = useRef<Record<string, HTMLAnchorElement | null>>({})
+  const resolvedActiveSectionKey = visibleSections.some(
+    section => section.key === activeSectionKey
+  )
+    ? activeSectionKey
+    : selectedSectionKey ?? visibleSections[0]?.key ?? ''
   const showAccountWarning = accountWarning && !isAccountComplete
+
+  useEffect(() => {
+    const observedEntries = new Map<string, IntersectionObserverEntry>()
+    const observedElements = visibleSections
+      .map(section => sectionRefs.current[section.key])
+      .filter((element): element is HTMLElement => element !== null)
+
+    if (observedElements.length === 0) return
+
+    const observer = new IntersectionObserver(
+      entries => {
+        entries.forEach(entry => {
+          const sectionKey = (entry.target as HTMLElement).dataset
+            .productSection
+
+          if (!sectionKey) return
+
+          if (entry.isIntersecting) {
+            observedEntries.set(sectionKey, entry)
+          } else {
+            observedEntries.delete(sectionKey)
+          }
+        })
+
+        const stickyOffset = window.matchMedia('(min-width: 1024px)').matches
+          ? 252
+          : 168
+        const nearestSection = Array.from(observedEntries.entries()).sort(
+          ([, firstEntry], [, secondEntry]) =>
+            Math.abs(firstEntry.boundingClientRect.top - stickyOffset) -
+            Math.abs(secondEntry.boundingClientRect.top - stickyOffset)
+        )[0]
+
+        if (nearestSection) {
+          setActiveSectionKey(nearestSection[0])
+        }
+      },
+      {
+        rootMargin: `${
+          window.matchMedia('(min-width: 1024px)').matches ? -252 : -168
+        }px 0px -55% 0px`,
+        threshold: [0, 0.01, 0.25]
+      }
+    )
+
+    observedElements.forEach(element => observer.observe(element))
+
+    return () => observer.disconnect()
+  }, [visibleSections])
+
+  useEffect(() => {
+    tabRefs.current[resolvedActiveSectionKey]?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'nearest',
+      inline: 'center'
+    })
+  }, [resolvedActiveSectionKey])
+
+  const scrollToSection = (sectionKey: string) => {
+    setActiveSectionKey(sectionKey)
+    sectionRefs.current[sectionKey]?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'start'
+    })
+  }
 
   return (
     <section
       id='catalog'
       aria-labelledby='product-selector-title'
-      className='rounded-[24px] border border-white/[0.08] bg-black/[0.035] p-5 shadow-[0_22px_70px_rgba(0,0,0,0.22)] backdrop-blur-md backdrop-saturate-150 sm:p-7'
+      className='aj-public-glass relative rounded-[24px] p-5 shadow-[0_24px_80px_rgba(0,0,0,0.3)] sm:p-7'
     >
       <div>
         <p className='font-mono text-[10px] uppercase tracking-[0.12em] text-white/[0.42]'>
@@ -200,8 +292,8 @@ export default function ProductSelector ({
             className='mt-2 text-xs leading-5 text-fuchsia-200/[0.72]'
           >
             {requiresZone
-              ? 'Lengkapi User ID dan Zone ID terlebih dahulu untuk memilih nominal.'
-              : 'Lengkapi User ID terlebih dahulu untuk memilih nominal.'}
+              ? 'Lengkapi User ID dan Zone ID pada bagian Data akun di atas.'
+              : 'Lengkapi User ID pada bagian Data akun di atas.'}
           </p>
         )}
       </div>
@@ -211,51 +303,90 @@ export default function ProductSelector ({
           Nominal belum tersedia.
         </div>
       ) : (
-        <div className='mt-7 space-y-8'>
-          {visibleSections.map((section, index) => {
-            const headingId = `product-section-${section.key}`
+        <div>
+          {visibleSections.length > 1 && (
+            <nav
+              aria-label='Navigasi kelompok produk'
+              className='sticky top-[92px] z-20 -mx-2 mt-5 rounded-[22px] border border-white/[0.08] bg-black/[0.035] px-2 py-2.5 shadow-[0_18px_55px_rgba(0,0,0,0.18)] backdrop-blur-md backdrop-saturate-150 sm:top-[96px] lg:top-[180px]'
+            >
+              <div className='flex gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden'>
+                {visibleSections.map(section => {
+                  const isActive = section.key === resolvedActiveSectionKey
+                  const sectionId = `product-section-${section.key}`
 
-            return (
-              <section
-                key={section.key}
-                aria-labelledby={headingId}
-                className={
-                  index > 0 ? 'border-t border-white/[0.08] pt-8' : undefined
-                }
-              >
-                <div className='flex items-end justify-between gap-4'>
-                  <div>
-                    <p className='font-mono text-[9px] uppercase tracking-[0.12em] text-white/[0.38]'>
-                      Kelompok produk
-                    </p>
+                  return (
+                    <a
+                      key={section.key}
+                      ref={element => {
+                        tabRefs.current[section.key] = element
+                      }}
+                      href={`#${sectionId}`}
+                      aria-current={isActive ? 'location' : undefined}
+                      onClick={event => {
+                        event.preventDefault()
+                        scrollToSection(section.key)
+                      }}
+                      className={`shrink-0 whitespace-nowrap rounded-full border px-4 py-2 text-sm font-medium transition-[border-color,background-color,color,box-shadow] duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-400/70 ${
+                        isActive
+                          ? 'border-fuchsia-300/45 bg-fuchsia-400/[0.08] text-fuchsia-100 shadow-[0_8px_24px_rgba(217,70,239,0.12)]'
+                          : 'border-white/[0.08] bg-white/[0.025] text-white/[0.52] hover:border-white/[0.16] hover:bg-white/[0.05] hover:text-white/[0.8]'
+                      }`}
+                    >
+                      {section.title}
+                    </a>
+                  )
+                })}
+              </div>
+            </nav>
+          )}
+
+          <div className={visibleSections.length > 1 ? 'mt-6' : 'mt-2'}>
+            {visibleSections.map((section, index) => {
+              const headingId = `product-heading-${section.key}`
+
+              return (
+                <section
+                  key={section.key}
+                  id={`product-section-${section.key}`}
+                  ref={element => {
+                    sectionRefs.current[section.key] = element
+                  }}
+                  data-product-section={section.key}
+                  aria-labelledby={headingId}
+                  className={`scroll-mt-[168px] lg:scroll-mt-[252px] ${
+                    index > 0 ? 'mt-10 border-t border-white/[0.08] pt-10' : ''
+                  }`}
+                >
+                  <div className='flex items-end justify-between gap-4'>
                     <h3
                       id={headingId}
-                      className='mt-1.5 text-lg font-medium tracking-[-0.025em] text-white sm:text-xl'
+                      className='text-base font-medium tracking-[-0.02em] text-white/[0.9] sm:text-lg'
                     >
                       {section.title}
                     </h3>
-                  </div>
-                  <span className='shrink-0 rounded-full border border-white/[0.08] bg-white/[0.025] px-3 py-1 font-mono text-[9px] uppercase tracking-[0.08em] text-white/[0.42]'>
-                    {section.products.length} pilihan
-                  </span>
-                </div>
 
-                <div className='mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3'>
-                  {section.products.map(product => (
-                    <ProductOption
-                      key={product.ID}
-                      product={product}
-                      selectedProduct={selectedProduct}
-                      isAccountComplete={isAccountComplete}
-                      showAccountWarning={showAccountWarning}
-                      formatPrice={formatPrice}
-                      onSelect={onSelect}
-                    />
-                  ))}
-                </div>
-              </section>
-            )
-          })}
+                    <span className='shrink-0 rounded-full border border-white/[0.08] bg-white/[0.025] px-3 py-1 font-mono text-[9px] uppercase tracking-[0.08em] text-white/[0.42]'>
+                      {section.products.length} Items
+                    </span>
+                  </div>
+
+                  <div className='mt-4 grid auto-rows-fr gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'>
+                    {section.products.map(product => (
+                      <ProductOption
+                        key={product.ID}
+                        product={product}
+                        selectedProduct={selectedProduct}
+                        isAccountComplete={isAccountComplete}
+                        showAccountWarning={showAccountWarning}
+                        formatPrice={formatPrice}
+                        onSelect={onSelect}
+                      />
+                    ))}
+                  </div>
+                </section>
+              )
+            })}
+          </div>
         </div>
       )}
     </section>

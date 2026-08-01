@@ -8,6 +8,8 @@ interface AccountTargetFieldsProps {
   zoneId: string
   userIdRef: Ref<HTMLInputElement>
   zoneIdRef: Ref<HTMLInputElement>
+  showWarning: boolean
+  attention: boolean
   onUserIdChange: (value: string) => void
   onZoneIdChange: (value: string) => void
 }
@@ -21,13 +23,32 @@ export default function AccountTargetFields ({
   zoneId,
   userIdRef,
   zoneIdRef,
+  showWarning,
+  attention,
   onUserIdChange,
   onZoneIdChange
 }: AccountTargetFieldsProps) {
+  const isUserIdMissing = showWarning && userId.trim().length === 0
+  const isZoneIdMissing =
+    showWarning && requiresZone && zoneId.trim().length === 0
+  const warningMessage =
+    isUserIdMissing && isZoneIdMissing
+      ? 'Lengkapi User ID dan Zone ID untuk memilih nominal.'
+      : isUserIdMissing
+      ? 'Lengkapi User ID untuk memilih nominal.'
+      : isZoneIdMissing
+      ? 'Lengkapi Zone ID untuk memilih nominal.'
+      : ''
+
   return (
     <section
       aria-labelledby='account-target-title'
-      className='rounded-[24px] border border-white/[0.08] bg-black/[0.035] p-5 shadow-[0_22px_70px_rgba(0,0,0,0.22)] backdrop-blur-md backdrop-saturate-150 sm:p-7'
+      aria-describedby={warningMessage ? 'account-target-warning' : undefined}
+      className={`rounded-[24px] border bg-black/[0.035] p-5 backdrop-blur-md backdrop-saturate-150 transition-[border-color,box-shadow] duration-500 sm:p-7 ${
+        attention
+          ? 'border-fuchsia-300/45 shadow-[0_0_0_1px_rgba(232,121,249,0.16),0_22px_70px_rgba(0,0,0,0.22),0_0_38px_rgba(217,70,239,0.16)]'
+          : 'border-white/[0.08] shadow-[0_22px_70px_rgba(0,0,0,0.22)]'
+      }`}
     >
       <div className='max-w-2xl'>
         <p className='font-mono text-[10px] uppercase tracking-[0.12em] text-white/[0.42]'>
@@ -44,6 +65,16 @@ export default function AccountTargetFields ({
         <p className='mt-2 text-sm leading-6 text-white/[0.5]'>
           Pastikan data akun sudah benar sebelum melanjutkan pembayaran.
         </p>
+
+        {warningMessage && (
+          <p
+            id='account-target-warning'
+            role='alert'
+            className='mt-3 text-xs leading-5 text-fuchsia-200/[0.8]'
+          >
+            {warningMessage}
+          </p>
+        )}
       </div>
 
       <div
@@ -74,8 +105,16 @@ export default function AccountTargetFields ({
             type='text'
             autoComplete='off'
             placeholder='Masukkan User ID'
-            className={inputClassName}
+            className={`${inputClassName} ${
+              isUserIdMissing
+                ? 'border-fuchsia-400/55 bg-fuchsia-400/[0.025] shadow-[0_0_0_3px_rgba(232,121,249,0.10),0_0_24px_rgba(217,70,239,0.08)]'
+                : ''
+            }`}
             value={userId}
+            aria-invalid={isUserIdMissing}
+            aria-describedby={
+              warningMessage ? 'account-target-warning' : undefined
+            }
             onChange={event => onUserIdChange(event.target.value)}
             required
           />
@@ -103,8 +142,16 @@ export default function AccountTargetFields ({
               type='text'
               autoComplete='off'
               placeholder='Masukkan Zone ID'
-              className={inputClassName}
+              className={`${inputClassName} ${
+                isZoneIdMissing
+                  ? 'border-fuchsia-400/55 bg-fuchsia-400/[0.025] shadow-[0_0_0_3px_rgba(232,121,249,0.10),0_0_24px_rgba(217,70,239,0.08)]'
+                  : ''
+              }`}
               value={zoneId}
+              aria-invalid={isZoneIdMissing}
+              aria-describedby={
+                warningMessage ? 'account-target-warning' : undefined
+              }
               onChange={event => onZoneIdChange(event.target.value)}
               required
             />

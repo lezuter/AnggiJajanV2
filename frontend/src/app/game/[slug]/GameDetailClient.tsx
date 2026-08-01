@@ -66,8 +66,7 @@ const API_BASE_URL = (
   process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api'
 ).replace(/\/+$/, '')
 
-const PURCHASES_ENABLED =
-  process.env.NEXT_PUBLIC_PURCHASES_ENABLED === 'true'
+const PURCHASES_ENABLED = process.env.NEXT_PUBLIC_PURCHASES_ENABLED === 'true'
 
 const toPreviewCatalog = (catalog: PublicCatalog): Catalog => ({
   name: catalog.name,
@@ -79,10 +78,7 @@ const toPreviewCatalog = (catalog: PublicCatalog): Catalog => ({
   productSections: []
 })
 
-const normalizeProducts = (
-  products: Product[] = [],
-  checkIdCode?: string
-) => {
+const normalizeProducts = (products: Product[] = [], checkIdCode?: string) => {
   const normalizedCheckCode = checkIdCode?.trim().toLowerCase()
   const safeProducts = Array.isArray(products) ? products : []
 
@@ -100,9 +96,7 @@ const normalizeProducts = (
         name.includes('cek id')
 
       const hasStock =
-        product.stock === undefined ||
-        product.stock === -1 ||
-        product.stock > 0
+        product.stock === undefined || product.stock === -1 || product.stock > 0
 
       return (
         product.is_active !== false &&
@@ -112,8 +106,7 @@ const normalizeProducts = (
       )
     })
     .sort((a, b) => {
-      const sortOrderDifference =
-        (a.sort_order ?? 0) - (b.sort_order ?? 0)
+      const sortOrderDifference = (a.sort_order ?? 0) - (b.sort_order ?? 0)
 
       if (sortOrderDifference !== 0) {
         return sortOrderDifference
@@ -151,8 +144,7 @@ const buildProductSections = (
   const sections = [...safeGroups]
     .filter(group => group.is_active !== false)
     .sort((a, b) => {
-      const sortOrderDifference =
-        (a.sort_order ?? 0) - (b.sort_order ?? 0)
+      const sortOrderDifference = (a.sort_order ?? 0) - (b.sort_order ?? 0)
 
       if (sortOrderDifference !== 0) {
         return sortOrderDifference
@@ -212,6 +204,9 @@ export default function GameDetailClient ({ slug }: { slug: string }) {
   const publicCatalog = useMemo(() => findPublicCatalog(slug), [slug])
   const userIdRef = useRef<HTMLInputElement>(null)
   const zoneIdRef = useRef<HTMLInputElement>(null)
+  const accountSectionRef = useRef<HTMLDivElement>(null)
+  const focusTimerRef = useRef<number | null>(null)
+  const attentionTimerRef = useRef<number | null>(null)
 
   const [game, setGame] = useState<Catalog | null>(
     !PURCHASES_ENABLED && publicCatalog ? toPreviewCatalog(publicCatalog) : null
@@ -223,6 +218,7 @@ export default function GameDetailClient ({ slug }: { slug: string }) {
   const [zoneId, setZoneId] = useState('')
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null)
   const [accountWarning, setAccountWarning] = useState(false)
+  const [accountAttention, setAccountAttention] = useState(false)
   const [paymentMethod] = useState('QRIS')
   const [isProcessing, setIsProcessing] = useState(false)
   const [showModal, setShowModal] = useState(false)
@@ -231,11 +227,34 @@ export default function GameDetailClient ({ slug }: { slug: string }) {
   )
 
   useEffect(() => {
+    if (focusTimerRef.current !== null) {
+      window.clearTimeout(focusTimerRef.current)
+      focusTimerRef.current = null
+    }
+
+    if (attentionTimerRef.current !== null) {
+      window.clearTimeout(attentionTimerRef.current)
+      attentionTimerRef.current = null
+    }
+
     setSelectedProduct(null)
     setAccountWarning(false)
+    setAccountAttention(false)
     setShowModal(false)
     setTransactionData(null)
   }, [slug])
+
+  useEffect(() => {
+    return () => {
+      if (focusTimerRef.current !== null) {
+        window.clearTimeout(focusTimerRef.current)
+      }
+
+      if (attentionTimerRef.current !== null) {
+        window.clearTimeout(attentionTimerRef.current)
+      }
+    }
+  }, [])
 
   useEffect(() => {
     const fetchGameData = async () => {
@@ -277,10 +296,9 @@ export default function GameDetailClient ({ slug }: { slug: string }) {
           category: data.category ?? previewCatalog?.category ?? '',
           publisher: data.publisher,
           region: data.region,
-          description:
-            data.description?.trim()
-              ? data.description
-              : previewCatalog?.description,
+          description: data.description?.trim()
+            ? data.description
+            : previewCatalog?.description,
           accent: data.accent ?? previewCatalog?.accent,
           short_name: data.short_name,
           shortName:
@@ -317,14 +335,17 @@ export default function GameDetailClient ({ slug }: { slug: string }) {
     game?.slug.toLowerCase().includes('mobile-legends')
   )
   const hasAccountData =
-    userId.trim().length > 0 &&
-    (!requiresZone || zoneId.trim().length > 0)
-  const currentStep = selectedProduct ? 3 : hasAccountData ? 2 : 1
+    userId.trim().length > 0 && (!requiresZone || zoneId.trim().length > 0)
+  const currentStep = !hasAccountData ? 1 : selectedProduct ? 3 : 2
 
   useEffect(() => {
-    if (hasAccountData) {
-      setAccountWarning(false)
+    if (!hasAccountData) {
+      setSelectedProduct(null)
+      return
     }
+
+    setAccountWarning(false)
+    setAccountAttention(false)
   }, [hasAccountData])
 
   const totalLabel = selectedProduct
@@ -347,24 +368,46 @@ export default function GameDetailClient ({ slug }: { slug: string }) {
 
   const handleSelectProduct = (product: Product) => {
     if (!hasAccountData) {
+      const missingInput =
+        userId.trim().length === 0
+          ? userIdRef.current
+          : requiresZone && zoneId.trim().length === 0
+          ? zoneIdRef.current
+          : null
+
       setAccountWarning(true)
+      setAccountAttention(true)
 
-      if (!userId.trim()) {
-        userIdRef.current?.focus()
-        userIdRef.current?.reportValidity()
-        return
+      if (focusTimerRef.current !== null) {
+        window.clearTimeout(focusTimerRef.current)
       }
 
-      if (requiresZone && !zoneId.trim()) {
-        zoneIdRef.current?.focus()
-        zoneIdRef.current?.reportValidity()
-        return
+      if (attentionTimerRef.current !== null) {
+        window.clearTimeout(attentionTimerRef.current)
       }
+
+      window.requestAnimationFrame(() => {
+        accountSectionRef.current?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'center'
+        })
+      })
+
+      focusTimerRef.current = window.setTimeout(() => {
+        missingInput?.focus({ preventScroll: true })
+        focusTimerRef.current = null
+      }, 500)
+
+      attentionTimerRef.current = window.setTimeout(() => {
+        setAccountAttention(false)
+        attentionTimerRef.current = null
+      }, 1800)
 
       return
     }
 
     setAccountWarning(false)
+    setAccountAttention(false)
     setSelectedProduct(product)
   }
 
@@ -505,7 +548,7 @@ export default function GameDetailClient ({ slug }: { slug: string }) {
             onBack={() => router.push('/#game')}
           />
 
-        <div className='mt-4 grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_370px]'>
+          <div className='mt-4 grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_370px]'>
             <div className='space-y-6'>
               {!PURCHASES_ENABLED && (
                 <section
@@ -531,15 +574,19 @@ export default function GameDetailClient ({ slug }: { slug: string }) {
                 <CheckoutStepper currentStep={currentStep} />
               </div>
 
-              <AccountTargetFields
-                requiresZone={requiresZone}
-                userId={userId}
-                zoneId={zoneId}
-                userIdRef={userIdRef}
-                zoneIdRef={zoneIdRef}
-                onUserIdChange={setUserId}
-                onZoneIdChange={setZoneId}
-              />
+              <div ref={accountSectionRef}>
+                <AccountTargetFields
+                  requiresZone={requiresZone}
+                  userId={userId}
+                  zoneId={zoneId}
+                  userIdRef={userIdRef}
+                  zoneIdRef={zoneIdRef}
+                  showWarning={accountWarning}
+                  attention={accountAttention}
+                  onUserIdChange={setUserId}
+                  onZoneIdChange={setZoneId}
+                />
+              </div>
 
               <ProductSelector
                 sections={game.productSections}
@@ -616,7 +663,7 @@ export default function GameDetailClient ({ slug }: { slug: string }) {
             </div>
 
             <aside className='relative hidden lg:block lg:self-stretch'>
-          <div className='custom-scrollbar lg:sticky lg:top-[104px] lg:max-h-[calc(100svh-120px)] lg:overflow-y-auto lg:overscroll-contain'>
+              <div className='custom-scrollbar lg:sticky lg:top-[104px] lg:max-h-[calc(100svh-120px)] lg:overflow-y-auto lg:overscroll-contain'>
                 <OrderSummary
                   canCheckout={canCheckout}
                   disabledReason={disabledReason}
