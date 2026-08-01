@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"bytes"
+	"context"
 	"crypto/hmac"
 	"crypto/md5"
 	"crypto/sha1"
@@ -1058,72 +1059,158 @@ func Checkout(c *fiber.Ctx) error {
 	var req models.CheckoutRequest
 
 	if err := c.BodyParser(&req); err != nil {
-		return c.Status(400).JSON(fiber.Map{"error": "Invalid"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Input checkout tidak valid",
+		})
+	}
+	if req.ProductID == 0 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Produk wajib dipilih",
+		})
+	}
+	if strings.TrimSpace(req.CustomerPhone) == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "ID atau nomor tujuan wajib diisi",
+		})
 	}
 
-	var p models.Product
-	if err := database.DB.Preload("ProductGroup").First(&p, req.ProductID).Error; err != nil {
-		return c.Status(404).JSON(fiber.Map{"error": "Produk ga ada"})
+	var product models.Product
+	if err := database.DB.
+		Preload("ProductGroup").
+		First(&product, req.ProductID).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"error": "Produk tidak ditemukan",
+		})
 	}
 
-	if availabilityError := storefrontProductAvailabilityError(p); availabilityError != "" {
+	if availabilityError := storefrontProductAvailabilityError(product); availabilityError != "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": availabilityError,
 		})
 	}
 
-	rand.Seed(time.Now().UnixNano())
-	invoiceID := fmt.Sprintf("INV-%d-%d", time.Now().UnixNano()/1000000, rand.Intn(1000))
-
-	capital := math.Round(p.Price)
+	capital := math.Round(product.Price)
 	sellingPrice := models.CalculateSellingPrice(capital)
 
-	tripay, err := requestTripay(invoiceID, int(sellingPrice), req.PaymentMethod, p.Name, req.CustomerPhone)
-	if err != nil || !tripay.Success {
-		reason := "Gagal Request Tripay"
-		if tripay.Message != "" {
-			reason = tripay.Message
-		}
+	requestContext, cancel := context.WithTimeout(c.UserContext(), 20*time.Second)
+	defer cancel()
 
-		return c.Status(500).JSON(fiber.Map{
-			"error":  "Gagal Request Tripay",
-			"reason": reason,
+	selectedMethod, err := resolveDuitkuCheckoutMethod(
+		requestContext,
+		product,
+		req.PaymentMethod,
+	)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error":  "Metode pembayaran tidak tersedia",
+			"reason": err.Error(),
 		})
 	}
 
-	provider := strings.ToLower(strings.TrimSpace(p.Provider))
+	rand.Seed(time.Now().UnixNano())
+	invoiceID := fmt.Sprintf(
+		"INV-%d-%d",
+		time.Now().UnixNano()/1000000,
+		rand.Intn(1000),
+	)
+
+	provider := strings.ToLower(strings.TrimSpace(product.Provider))
 	if provider == "" {
 		provider = "digiflazz"
 	}
 
+	grossProfit := sellingPrice - capital
+	netProfitEstimated := grossProfit - selectedMethod.MerchantFee
+
 	trx := models.Transaction{
-		InvoiceID:      invoiceID,
-		ProductID:      p.ID,
-		CustomerPhone:  req.CustomerPhone,
-		Amount:         sellingPrice,
-		Capital:        capital,
-		Profit:         sellingPrice - capital,
-		Status:         "UNPAID",
-		ProviderStatus: "Waiting Payment",
-		PaymentMethod:  req.PaymentMethod,
-		PaymentURL:     tripay.Data.CheckoutURL,
-		Reference:      tripay.Data.Reference,
-
-		Provider:     provider,
-		ProviderSKU:  p.Code,
-		ProviderRef:  "",
-		ProviderName: providerDisplayName(provider),
-
-		CreatedVia: "CUSTOMER",
+		InvoiceID:           invoiceID,
+		ProductID:           product.ID,
+		CustomerPhone:       strings.TrimSpace(req.CustomerPhone),
+		Amount:              sellingPrice,
+		Capital:             capital,
+		Profit:              grossProfit,
+		Status:              "UNPAID",
+		PaymentStatus:       "UNPAID",
+		FulfillmentStatus:   "WAITING_PAYMENT",
+		ProviderStatus:      "Waiting Payment",
+		PaymentProvider:     "duitku",
+		PaymentMethod:       selectedMethod.Code,
+		PaymentFeeBearer:    selectedMethod.FeeBearer,
+		PaymentFeeEstimated: selectedMethod.MerchantFee,
+		NetProfitEstimated:  netProfitEstimated,
+		Provider:            provider,
+		ProviderSKU:         product.Code,
+		ProviderRef:         "",
+		ProviderName:        providerDisplayName(provider),
+		CreatedVia:          "CUSTOMER",
 	}
 
+	// Simpan snapshot order sebelum memanggil gateway supaya kegagalan inquiry
+	// tetap tercatat dan tidak menghasilkan transaksi eksternal tanpa jejak lokal.
 	if err := database.DB.Create(&trx).Error; err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": "Gagal menyimpan transaksi"})
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Gagal menyimpan transaksi",
+		})
+	}
+
+	duitku, err := requestDuitkuTransaction(
+		requestContext,
+		invoiceID,
+		int64(math.Round(sellingPrice)),
+		selectedMethod.Code,
+		product.Name,
+		req.CustomerPhone,
+		req.CustomerName,
+		req.Email,
+	)
+	if err != nil {
+		_ = database.DB.Model(&trx).Updates(map[string]interface{}{
+			"status":          "FAILED",
+			"payment_status":  "FAILED",
+			"provider_status": "Payment Request Failed",
+			"error_message":   err.Error(),
+		}).Error
+
+		return c.Status(fiber.StatusBadGateway).JSON(fiber.Map{
+			"error":      "Gagal membuat pembayaran Duitku",
+			"reason":     err.Error(),
+			"invoice_id": invoiceID,
+		})
+	}
+
+	trx.PaymentURL = strings.TrimSpace(duitku.PaymentURL)
+	trx.PaymentReference = strings.TrimSpace(duitku.Reference)
+	trx.Reference = trx.PaymentReference
+
+	if err := database.DB.Model(&trx).Updates(map[string]interface{}{
+		"payment_url":       trx.PaymentURL,
+		"payment_reference": trx.PaymentReference,
+		"reference":         trx.Reference,
+		"error_message":     "",
+	}).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error":      "Pembayaran dibuat tetapi gagal menyimpan detailnya",
+			"invoice_id": invoiceID,
+			"reference":  duitku.Reference,
+		})
 	}
 
 	return c.JSON(fiber.Map{
 		"message": "Success",
-		"data":    tripay.Data,
+		"data": fiber.Map{
+			"merchant_ref":      invoiceID,
+			"merchant_order_id": invoiceID,
+			"reference":         duitku.Reference,
+			"checkout_url":      duitku.PaymentURL,
+			"payment_url":       duitku.PaymentURL,
+			"va_number":         duitku.VANumber,
+			"qr_string":         duitku.QRString,
+			"app_url":           duitku.AppURL,
+			"amount":            sellingPrice,
+			"payment_method":    selectedMethod.Code,
+			"payment_name":      selectedMethod.Name,
+			"payment_provider":  "duitku",
+		},
 	})
 }
 

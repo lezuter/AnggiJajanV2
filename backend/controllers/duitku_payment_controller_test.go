@@ -126,3 +126,17 @@ func TestIsPaymentMethodAllowed(t *testing.T) {
 		})
 	}
 }
+
+func TestTruncateRunes(t *testing.T) {
+	got := truncateRunes("Pelanggan Anggi Jajan Panjang", 20)
+	if len([]rune(got)) != 20 {
+		t.Fatalf("length = %d, expected 20", len([]rune(got)))
+	}
+}
+
+func TestFirstNonEmpty(t *testing.T) {
+	got := firstNonEmpty(" ", "", "nilai", "cadangan")
+	if got != "nilai" {
+		t.Fatalf("got = %q, expected %q", got, "nilai")
+	}
+}

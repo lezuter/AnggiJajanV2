@@ -227,6 +227,329 @@ func fetchDuitkuPaymentMethods(
 	return result.PaymentFee, nil
 }
 
+type duitkuInquiryItem struct {
+	Name     string `json:"name"`
+	Price    int64  `json:"price"`
+	Quantity int    `json:"quantity"`
+}
+
+type duitkuInquiryRequest struct {
+	MerchantCode     string              `json:"merchantCode"`
+	PaymentAmount    int64               `json:"paymentAmount"`
+	PaymentMethod    string              `json:"paymentMethod"`
+	MerchantOrderID  string              `json:"merchantOrderId"`
+	ProductDetails   string              `json:"productDetails"`
+	AdditionalParam  string              `json:"additionalParam"`
+	MerchantUserInfo string              `json:"merchantUserInfo"`
+	CustomerVAName   string              `json:"customerVaName"`
+	Email            string              `json:"email"`
+	PhoneNumber      string              `json:"phoneNumber"`
+	ItemDetails      []duitkuInquiryItem `json:"itemDetails"`
+	CallbackURL      string              `json:"callbackUrl"`
+	ReturnURL        string              `json:"returnUrl"`
+	Signature        string              `json:"signature"`
+	ExpiryPeriod     int                 `json:"expiryPeriod"`
+}
+
+type duitkuInquiryResponse struct {
+	MerchantCode  string `json:"merchantCode"`
+	Reference     string `json:"reference"`
+	PaymentURL    string `json:"paymentUrl"`
+	VANumber      string `json:"vaNumber"`
+	QRString      string `json:"qrString"`
+	AppURL        string `json:"AppUrl"`
+	AppURLLower   string `json:"appUrl"`
+	Amount        string `json:"amount"`
+	StatusCode    string `json:"statusCode"`
+	StatusMessage string `json:"statusMessage"`
+	Message       string `json:"Message"`
+}
+
+type duitkuCheckoutMethod struct {
+	Code        string
+	Name        string
+	Category    string
+	MerchantFee float64
+	FeeBearer   string
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
+}
+
+func truncateRunes(value string, limit int) string {
+	value = strings.TrimSpace(value)
+	runes := []rune(value)
+	if len(runes) <= limit {
+		return value
+	}
+	return string(runes[:limit])
+}
+
+func resolveDuitkuCustomerEmail(requestEmail string) string {
+	return firstNonEmpty(
+		requestEmail,
+		os.Getenv("DUITKU_DEFAULT_CUSTOMER_EMAIL"),
+		"customer@anggijajan.com",
+	)
+}
+
+func resolveDuitkuCallbackURL() string {
+	return firstNonEmpty(
+		os.Getenv("DUITKU_CALLBACK_URL"),
+		os.Getenv("CALLBACK_URL"),
+	)
+}
+
+func resolveDuitkuReturnURL() string {
+	if configured := strings.TrimSpace(os.Getenv("DUITKU_RETURN_URL")); configured != "" {
+		return configured
+	}
+
+	frontendURL := strings.TrimRight(strings.TrimSpace(os.Getenv("FRONTEND_URL")), "/")
+	if frontendURL != "" {
+		return frontendURL + "/cek-pesanan"
+	}
+
+	return ""
+}
+
+func resolveDuitkuCheckoutMethod(
+	ctx context.Context,
+	product models.Product,
+	requestedCode string,
+) (duitkuCheckoutMethod, error) {
+	amount := models.CalculateSellingPrice(math.Round(product.Price))
+	if amount < duitkuMinimumTransactionAmount {
+		return duitkuCheckoutMethod{}, fmt.Errorf(
+			"minimum transaksi Duitku Rp%.0f",
+			float64(duitkuMinimumTransactionAmount),
+		)
+	}
+
+	methods, err := fetchDuitkuPaymentMethods(ctx, int64(math.Round(amount)))
+	if err != nil {
+		return duitkuCheckoutMethod{}, err
+	}
+
+	requestedCode = strings.ToUpper(strings.TrimSpace(requestedCode))
+	useQRISAlias := requestedCode == "" || requestedCode == "QRIS"
+
+	grossProfit := amount - math.Round(product.Price)
+	feeBearer := strings.ToUpper(
+		paymentSettingValue("payment_fee_bearer", "MERCHANT"),
+	)
+	minimumNetProfit := paymentSettingFloat("minimum_net_profit", 1500)
+	minimumRetention := paymentSettingFloat(
+		"minimum_profit_retention_percent",
+		50,
+	)
+
+	var selected *duitkuCheckoutMethod
+
+	for _, method := range methods {
+		code := strings.ToUpper(strings.TrimSpace(method.PaymentMethod))
+		merchantFee, category, minimumAmount, configured :=
+			estimateDuitkuMerchantFee(code, amount)
+
+		enabled := configured &&
+			amount >= minimumAmount &&
+			isPaymentMethodAllowed(
+				grossProfit,
+				merchantFee,
+				minimumNetProfit,
+				minimumRetention,
+			)
+		if !enabled {
+			continue
+		}
+
+		if useQRISAlias {
+			if category != "QRIS" {
+				continue
+			}
+		} else if code != requestedCode {
+			continue
+		}
+
+		candidate := duitkuCheckoutMethod{
+			Code:        code,
+			Name:        strings.TrimSpace(method.PaymentName),
+			Category:    category,
+			MerchantFee: merchantFee,
+			FeeBearer:   feeBearer,
+		}
+
+		if selected == nil || candidate.MerchantFee < selected.MerchantFee {
+			selected = &candidate
+		}
+	}
+
+	if selected == nil {
+		if useQRISAlias {
+			return duitkuCheckoutMethod{}, fmt.Errorf(
+				"QRIS tidak tersedia untuk produk atau nominal ini",
+			)
+		}
+		return duitkuCheckoutMethod{}, fmt.Errorf(
+			"metode pembayaran %s tidak tersedia untuk produk atau nominal ini",
+			requestedCode,
+		)
+	}
+
+	return *selected, nil
+}
+
+func requestDuitkuTransaction(
+	ctx context.Context,
+	invoiceID string,
+	amount int64,
+	paymentMethod string,
+	productName string,
+	customerPhone string,
+	customerName string,
+	customerEmail string,
+) (duitkuInquiryResponse, error) {
+	merchantCode := strings.TrimSpace(os.Getenv("DUITKU_MERCHANT_CODE"))
+	apiKey := strings.TrimSpace(os.Getenv("DUITKU_API_KEY"))
+	callbackURL := resolveDuitkuCallbackURL()
+	returnURL := resolveDuitkuReturnURL()
+
+	if merchantCode == "" || apiKey == "" {
+		return duitkuInquiryResponse{}, fmt.Errorf(
+			"DUITKU_MERCHANT_CODE atau DUITKU_API_KEY belum dikonfigurasi",
+		)
+	}
+	if callbackURL == "" {
+		return duitkuInquiryResponse{}, fmt.Errorf(
+			"DUITKU_CALLBACK_URL belum dikonfigurasi",
+		)
+	}
+	if returnURL == "" {
+		return duitkuInquiryResponse{}, fmt.Errorf(
+			"DUITKU_RETURN_URL atau FRONTEND_URL belum dikonfigurasi",
+		)
+	}
+
+	customerName = truncateRunes(
+		firstNonEmpty(customerName, "Pelanggan Anggi"),
+		20,
+	)
+	customerEmail = resolveDuitkuCustomerEmail(customerEmail)
+	productName = truncateRunes(productName, 255)
+
+	stringToSign := merchantCode + invoiceID + strconv.FormatInt(amount, 10)
+	payload := duitkuInquiryRequest{
+		MerchantCode:     merchantCode,
+		PaymentAmount:    amount,
+		PaymentMethod:    strings.ToUpper(strings.TrimSpace(paymentMethod)),
+		MerchantOrderID:  invoiceID,
+		ProductDetails:   productName,
+		AdditionalParam:  "",
+		MerchantUserInfo: customerEmail,
+		CustomerVAName:   customerName,
+		Email:            customerEmail,
+		PhoneNumber:      strings.TrimSpace(customerPhone),
+		ItemDetails: []duitkuInquiryItem{
+			{
+				Name:     productName,
+				Price:    amount,
+				Quantity: 1,
+			},
+		},
+		CallbackURL:  callbackURL,
+		ReturnURL:    returnURL,
+		Signature:    duitkuHMACSHA256(stringToSign, apiKey),
+		ExpiryPeriod: 10,
+	}
+
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return duitkuInquiryResponse{}, fmt.Errorf(
+			"gagal membentuk inquiry Duitku: %w",
+			err,
+		)
+	}
+
+	endpoint := duitkuBaseURL() + "/webapi/api/merchant/v2/inquiry"
+	request, err := http.NewRequestWithContext(
+		ctx,
+		http.MethodPost,
+		endpoint,
+		bytes.NewReader(body),
+	)
+	if err != nil {
+		return duitkuInquiryResponse{}, fmt.Errorf(
+			"gagal membuat inquiry Duitku: %w",
+			err,
+		)
+	}
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Accept", "application/json")
+
+	client := &http.Client{Timeout: 15 * time.Second}
+	response, err := client.Do(request)
+	if err != nil {
+		return duitkuInquiryResponse{}, fmt.Errorf(
+			"gagal menghubungi Duitku: %w",
+			err,
+		)
+	}
+	defer response.Body.Close()
+
+	responseBody, err := io.ReadAll(io.LimitReader(response.Body, 1<<20))
+	if err != nil {
+		return duitkuInquiryResponse{}, fmt.Errorf(
+			"gagal membaca inquiry Duitku: %w",
+			err,
+		)
+	}
+
+	var result duitkuInquiryResponse
+	if err := json.Unmarshal(responseBody, &result); err != nil {
+		return duitkuInquiryResponse{}, fmt.Errorf(
+			"response inquiry Duitku tidak valid (HTTP %d): %w",
+			response.StatusCode,
+			err,
+		)
+	}
+
+	message := firstNonEmpty(
+		result.StatusMessage,
+		result.Message,
+		http.StatusText(response.StatusCode),
+	)
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return duitkuInquiryResponse{}, fmt.Errorf(
+			"Duitku HTTP %d: %s",
+			response.StatusCode,
+			message,
+		)
+	}
+	if strings.TrimSpace(result.StatusCode) != "00" {
+		return duitkuInquiryResponse{}, fmt.Errorf(
+			"Duitku menolak transaksi: %s",
+			message,
+		)
+	}
+	if strings.TrimSpace(result.Reference) == "" ||
+		strings.TrimSpace(result.PaymentURL) == "" {
+		return duitkuInquiryResponse{}, fmt.Errorf(
+			"response Duitku tidak memiliki reference atau paymentUrl",
+		)
+	}
+
+	if result.AppURL == "" {
+		result.AppURL = result.AppURLLower
+	}
+
+	return result, nil
+}
 func paymentSettingValue(key, fallback string) string {
 	var setting models.Setting
 	if err := database.DB.Where("key = ?", key).First(&setting).Error; err != nil {

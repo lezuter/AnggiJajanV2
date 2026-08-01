@@ -250,6 +250,8 @@ type CheckoutRequest struct {
 	ProductID     uint   `json:"product_id"`
 	CustomerPhone string `json:"customer_phone"`
 	PaymentMethod string `json:"payment_method"`
+	CustomerName  string `json:"customer_name"`
+	Email         string `json:"email"`
 }
 
 type ManualOrderRequest struct {
