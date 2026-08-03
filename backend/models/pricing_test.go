@@ -21,3 +21,23 @@ func TestCalculateSellingPrice(t *testing.T) {
 		})
 	}
 }
+
+func TestProductAfterFindExposesMidtransStartingPrice(t *testing.T) {
+	t.Setenv("MIDTRANS_MODE", "sandbox")
+	t.Setenv("MIDTRANS_FEE_RULES_JSON_SANDBOX", "")
+	t.Setenv("MIDTRANS_FEE_VAT_PERCENT", "11")
+
+	product := Product{Price: 1000}
+	if err := product.AfterFind(nil); err != nil {
+		t.Fatalf("AfterFind() error = %v", err)
+	}
+	if product.SellingPrice != 1050 {
+		t.Fatalf("selling price = %v", product.SellingPrice)
+	}
+	if product.StartingPrice <= product.SellingPrice {
+		t.Fatalf("starting price %v must gross-up selling price %v", product.StartingPrice, product.SellingPrice)
+	}
+	if product.StartingMethod != "QRIS" {
+		t.Fatalf("starting method = %q", product.StartingMethod)
+	}
+}

@@ -4,6 +4,8 @@ import (
 	"math"
 	"time"
 
+	"github.com/derry/anggijajan-v2-backend/payments"
+
 	"gorm.io/gorm"
 )
 
@@ -62,6 +64,8 @@ type Product struct {
 	Code            string        `gorm:"uniqueIndex" json:"code"`
 	Price           float64       `json:"price"`
 	SellingPrice    float64       `json:"selling_price" gorm:"-"`
+	StartingPrice   float64       `json:"starting_price" gorm:"-"`
+	StartingMethod  string        `json:"starting_payment_method" gorm:"-"`
 	OriginalPrice   *float64      `json:"original_price" gorm:"column:original_price"`
 	Stock           int           `json:"stock" gorm:"default:0"`
 	IsActive        bool          `json:"is_active" gorm:"default:true;index"` // Status ketersediaan dari provider.
@@ -78,17 +82,28 @@ type Product struct {
 
 const StorefrontMarkupRate = 0.05
 
-// CalculateSellingPrice is the single source of truth for the public selling
-// price. Price remains the provider capital and SellingPrice is never persisted.
+// CalculateSellingPrice is the single source of truth for the internal target
+// net. Price remains provider capital and SellingPrice is never persisted.
 func CalculateSellingPrice(capital float64) float64 {
 	roundedCapital := math.Round(capital)
 	return math.Round(roundedCapital * (1 + StorefrontMarkupRate))
 }
 
-// AfterFind exposes the calculated selling price in every Product response,
-// including products loaded through Catalog preloads, without adding a DB column.
+// AfterFind exposes both the internal target and the QRIS-inclusive public
+// starting price without adding a persisted Product column or a network call.
 func (product *Product) AfterFind(_ *gorm.DB) error {
 	product.SellingPrice = CalculateSellingPrice(product.Price)
+	product.StartingMethod = "QRIS"
+
+	config, err := payments.LoadMidtransConfig()
+	if err != nil {
+		product.StartingPrice = product.SellingPrice
+		return nil
+	}
+	product.StartingPrice, err = config.StartingPrice(product.SellingPrice)
+	if err != nil {
+		product.StartingPrice = product.SellingPrice
+	}
 	return nil
 }
 
@@ -143,6 +158,11 @@ type Transaction struct {
 	Amount  float64 `json:"amount"`  // Harga Jual
 	Capital float64 `json:"capital"` // Modal (Dari Digiflazz)
 	Profit  float64 `json:"profit"`  // Untung (Amount - Capital)
+	// ProductAmount adalah target net internal. StartingPrice/Amount adalah harga
+	// publik yang dibayar customer; fee payment disubsidi merchant.
+	ProductAmount     float64 `json:"product_amount" gorm:"not null;default:0"`
+	StartingPrice     float64 `json:"starting_price" gorm:"not null;default:0"`
+	CustomerSurcharge float64 `json:"customer_surcharge" gorm:"not null;default:0"`
 
 	Status            string `json:"status" gorm:"index"`
 	PaymentStatus     string `json:"payment_status" gorm:"index"`
@@ -155,15 +175,18 @@ type Transaction struct {
 	// --- PAYMENT SNAPSHOT ---
 	// Dipisahkan dari Provider* karena Provider* khusus fulfillment/top-up
 	// seperti Digiflazz, ApiGames, atau manual.
-	PaymentProvider     string   `json:"payment_provider" gorm:"size:30;index"`
-	PaymentMethod       string   `json:"payment_method"`
-	PaymentURL          string   `json:"payment_url"`
-	PaymentReference    string   `json:"payment_reference" gorm:"size:100;index"`
-	PaymentFeeBearer    string   `json:"payment_fee_bearer" gorm:"size:20;index"`
-	PaymentFeeEstimated float64  `json:"payment_fee_estimated" gorm:"not null;default:0"`
-	PaymentFeeActual    *float64 `json:"payment_fee_actual"`
-	NetProfitEstimated  float64  `json:"net_profit_estimated" gorm:"not null;default:0"`
-	NetProfitActual     *float64 `json:"net_profit_actual"`
+	PaymentProvider       string   `json:"payment_provider" gorm:"size:30;index"`
+	PaymentQuoteKey       string   `json:"payment_quote_key" gorm:"size:120;index"`
+	PaymentMethod         string   `json:"payment_method"`
+	PaymentURL            string   `json:"payment_url"`
+	PaymentReference      string   `json:"payment_reference" gorm:"size:100;index"`
+	PaymentFeeBearer      string   `json:"payment_fee_bearer" gorm:"size:20;index"`
+	PaymentFeeEstimated   float64  `json:"payment_fee_estimated" gorm:"not null;default:0"`
+	PaymentFeeActual      *float64 `json:"payment_fee_actual"`
+	NetProfitEstimated    float64  `json:"net_profit_estimated" gorm:"not null;default:0"`
+	NetProfitActual       *float64 `json:"net_profit_actual"`
+	MidtransTransactionID string   `json:"midtrans_transaction_id" gorm:"size:100;index"`
+	SnapToken             string   `json:"-" gorm:"type:text"`
 
 	// Legacy/external reference. Dipertahankan sementara agar flow lama tidak rusak.
 	Reference string `json:"reference"`
@@ -209,8 +232,12 @@ type TransactionListDTO struct {
 	Amount              float64           `json:"amount"`
 	Capital             float64           `json:"capital"` // 🔥 BALIKIN INI
 	Profit              float64           `json:"profit"`
+	ProductAmount       float64           `json:"product_amount"`
+	StartingPrice       float64           `json:"starting_price"`
+	CustomerSurcharge   float64           `json:"customer_surcharge"`
 	PaymentMethod       string            `json:"payment_method"`
 	PaymentProvider     string            `json:"payment_provider"`
+	PaymentQuoteKey     string            `json:"payment_quote_key"`
 	PaymentURL          string            `json:"payment_url"` // 🔥 BALIKIN INI
 	PaymentReference    string            `json:"payment_reference"`
 	PaymentFeeBearer    string            `json:"payment_fee_bearer"`
@@ -249,6 +276,7 @@ type LoginRequest struct {
 type CheckoutRequest struct {
 	ProductID     uint   `json:"product_id"`
 	CustomerPhone string `json:"customer_phone"`
+	QuoteKey      string `json:"quote_key"`
 	PaymentMethod string `json:"payment_method"`
 	CustomerName  string `json:"customer_name"`
 	Email         string `json:"email"`

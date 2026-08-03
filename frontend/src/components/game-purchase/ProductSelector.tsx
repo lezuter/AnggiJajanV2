@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { getProductSellingPrice } from '@/lib/pricing'
+import { getProductStartingPrice } from '@/lib/pricing'
 
 export interface PurchaseProduct {
   ID: number
@@ -9,6 +9,8 @@ export interface PurchaseProduct {
   code: string
   price?: number
   selling_price?: number
+  starting_price?: number
+  starting_payment_method?: string
   original_price?: number | null
   stock?: number
   is_active?: boolean
@@ -88,12 +90,17 @@ function ProductOption ({
   onSelect: (product: PurchaseProduct) => void
 }) {
   const isSelected = selectedProduct?.ID === product.ID
-  const finalPrice = getProductSellingPrice(product)
+  const finalPrice = getProductStartingPrice(product)
   const originalPrice = product.original_price ?? 0
-  const hasDiscount = finalPrice > 0 && originalPrice > finalPrice
-  const discountPercent = hasDiscount
+  const hasValidDiscountAmounts =
+    Number.isFinite(finalPrice) &&
+    Number.isFinite(originalPrice) &&
+    finalPrice >= 0 &&
+    originalPrice > finalPrice
+  const discountPercent = hasValidDiscountAmounts
     ? Math.round(((originalPrice - finalPrice) / originalPrice) * 100)
     : 0
+  const hasDiscount = discountPercent > 0
   const productName = product.name.trim()
   const productNameTypography =
     productName.length > 64
@@ -153,24 +160,26 @@ function ProductOption ({
         {productName}
       </p>
 
-      <div className='mt-auto pt-3.5'>
-        <p className='tabular-nums text-base font-semibold tracking-[-0.02em] text-[var(--aj-accent)]'>
+      <div className='mt-auto flex flex-col pt-3.5'>
+        {hasDiscount && (
+          <div className='flex flex-wrap items-center justify-center gap-x-1.5 gap-y-1'>
+            <span className='whitespace-nowrap tabular-nums text-[11px] leading-none text-white/[0.34] line-through'>
+              {formatPrice(originalPrice)}
+            </span>
+
+            <span className='whitespace-nowrap rounded-full border border-fuchsia-300/25 bg-fuchsia-400/[0.1] px-1.5 py-0.5 text-[9px] font-medium leading-4 text-fuchsia-200'>
+              -{discountPercent}%
+            </span>
+          </div>
+        )}
+
+        <p
+          className={`tabular-nums text-base font-semibold tracking-[-0.02em] text-[var(--aj-accent)] ${
+            hasDiscount ? 'mt-2' : ''
+          }`}
+        >
           {formatPrice(finalPrice)}
         </p>
-
-        <div className='mt-2 flex min-h-5 flex-wrap items-center justify-center gap-x-1.5 gap-y-1'>
-          {hasDiscount && (
-            <>
-              <span className='whitespace-nowrap tabular-nums text-[11px] leading-none text-white/[0.34] line-through'>
-                {formatPrice(originalPrice)}
-              </span>
-
-              <span className='whitespace-nowrap rounded-full border border-fuchsia-300/25 bg-fuchsia-400/[0.1] px-1.5 py-0.5 text-[9px] font-medium leading-4 text-fuchsia-200'>
-                -{discountPercent}%
-              </span>
-            </>
-          )}
-        </div>
       </div>
     </button>
   )

@@ -19,7 +19,8 @@ import ProductSelector, {
 } from '@/components/game-purchase/ProductSelector'
 import CyberneticGridShader from '@/components/ui/cybernetic-grid-shader'
 import { findPublicCatalog, PublicCatalog } from '@/data/publicCatalogs'
-import { getProductSellingPrice } from '@/lib/pricing'
+import { prepareMidtransSnap } from '@/lib/midtransSnap'
+import { getProductStartingPrice } from '@/lib/pricing'
 
 type Product = PurchaseProduct
 
@@ -58,6 +59,9 @@ interface Catalog extends CatalogMetadata {
 }
 
 interface CheckoutData {
+  snap_token?: string
+  redirect_url?: string
+  invoice_id?: string
   merchant_ref?: string
   merchant_order_id?: string
   reference?: string
@@ -76,7 +80,8 @@ interface PaymentMethodsResponse {
   payment_provider: string
   fee_bearer: string
   product_amount: number
-  minimum_transaction_amount: number
+  starting_price: number
+  minimum_transaction_amount?: number
   methods: PaymentMethodOption[]
 }
 
@@ -131,7 +136,7 @@ const normalizeProducts = (products: Product[] = [], checkIdCode?: string) => {
       }
 
       const priceDifference =
-        getProductSellingPrice(a) - getProductSellingPrice(b)
+        getProductStartingPrice(a) - getProductStartingPrice(b)
 
       if (priceDifference !== 0) {
         return priceDifference
@@ -208,13 +213,11 @@ const formatIDR = (value?: number) =>
 const summaryRows = (
   gameName: string,
   selectedProduct: Product | null,
-  selectedTarget: string,
-  paymentMethod: string
+  selectedTarget: string
 ) => [
   ['Game', gameName],
   ['Produk', selectedProduct?.name || '-'],
-  ['Target', selectedTarget || '-'],
-  ['Pembayaran', paymentMethod]
+  ['Target', selectedTarget || '-']
 ]
 
 export default function GameDetailClient ({ slug }: { slug: string }) {
@@ -223,8 +226,10 @@ export default function GameDetailClient ({ slug }: { slug: string }) {
   const userIdRef = useRef<HTMLInputElement>(null)
   const zoneIdRef = useRef<HTMLInputElement>(null)
   const accountSectionRef = useRef<HTMLDivElement>(null)
+  const paymentSectionRef = useRef<HTMLDivElement>(null)
   const focusTimerRef = useRef<number | null>(null)
   const attentionTimerRef = useRef<number | null>(null)
+  const paymentScrollTimerRef = useRef<number | null>(null)
 
   const [game, setGame] = useState<Catalog | null>(
     !PURCHASES_ENABLED && publicCatalog ? toPreviewCatalog(publicCatalog) : null
@@ -240,7 +245,7 @@ export default function GameDetailClient ({ slug }: { slug: string }) {
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodOption[]>([])
   const [paymentMethodsLoading, setPaymentMethodsLoading] = useState(false)
   const [paymentMethodsError, setPaymentMethodsError] = useState('')
-  const [paymentMethod, setPaymentMethod] = useState('')
+  const [selectedQuoteKey, setSelectedQuoteKey] = useState('')
   const [isProcessing, setIsProcessing] = useState(false)
   const [showModal, setShowModal] = useState(false)
   const [transactionData, setTransactionData] = useState<CheckoutData | null>(
@@ -258,13 +263,18 @@ export default function GameDetailClient ({ slug }: { slug: string }) {
       attentionTimerRef.current = null
     }
 
+    if (paymentScrollTimerRef.current !== null) {
+      window.clearTimeout(paymentScrollTimerRef.current)
+      paymentScrollTimerRef.current = null
+    }
+
     setSelectedProduct(null)
     setAccountWarning(false)
     setAccountAttention(false)
     setPaymentMethods([])
     setPaymentMethodsLoading(false)
     setPaymentMethodsError('')
-    setPaymentMethod('')
+    setSelectedQuoteKey('')
     setShowModal(false)
     setTransactionData(null)
   }, [slug])
@@ -277,6 +287,10 @@ export default function GameDetailClient ({ slug }: { slug: string }) {
 
       if (attentionTimerRef.current !== null) {
         window.clearTimeout(attentionTimerRef.current)
+      }
+
+      if (paymentScrollTimerRef.current !== null) {
+        window.clearTimeout(paymentScrollTimerRef.current)
       }
     }
   }, [])
@@ -354,7 +368,7 @@ export default function GameDetailClient ({ slug }: { slug: string }) {
       setPaymentMethods([])
       setPaymentMethodsLoading(false)
       setPaymentMethodsError('')
-      setPaymentMethod('')
+      setSelectedQuoteKey('')
       return
     }
 
@@ -364,7 +378,7 @@ export default function GameDetailClient ({ slug }: { slug: string }) {
       setPaymentMethods([])
       setPaymentMethodsLoading(true)
       setPaymentMethodsError('')
-      setPaymentMethod('')
+      setSelectedQuoteKey('')
 
       try {
         const response = await fetch(
@@ -394,15 +408,17 @@ export default function GameDetailClient ({ slug }: { slug: string }) {
           availableMethods[0]
 
         setPaymentMethods(safeMethods)
-        setPaymentMethod(recommendedMethod?.code || '')
+        setSelectedQuoteKey(recommendedMethod?.quote_key || '')
 
         if (availableMethods.length === 0) {
+          const minimumReason = result.minimum_transaction_amount
+            ? `Minimum transaksi Rp${result.minimum_transaction_amount.toLocaleString(
+                'id-ID'
+              )}.`
+            : 'Belum ada metode Midtrans yang aktif untuk nominal ini.'
           const reason =
             safeMethods.find(method => method.disabled_reason)
-              ?.disabled_reason ||
-            `Minimum transaksi Rp${result.minimum_transaction_amount.toLocaleString(
-              'id-ID'
-            )}.`
+              ?.disabled_reason || minimumReason
 
           setPaymentMethodsError(reason)
         }
@@ -450,19 +466,29 @@ export default function GameDetailClient ({ slug }: { slug: string }) {
   }, [hasAccountData])
 
   const selectedPaymentMethod = paymentMethods.find(
-    method => method.code === paymentMethod
+    method => method.quote_key === selectedQuoteKey
   )
   const paymentMethodLabel =
     selectedPaymentMethod?.name || 'Belum dipilih'
-  const totalLabel = selectedProduct
-    ? formatIDR(getProductSellingPrice(selectedProduct))
+  const productAmount = selectedProduct
+    ? selectedPaymentMethod?.base_price ??
+      getProductStartingPrice(selectedProduct)
+    : undefined
+  const productAmountLabel = selectedProduct
+    ? formatIDR(productAmount)
+    : 'Belum tersedia'
+  const totalLabel = selectedPaymentMethod
+    ? formatIDR(selectedPaymentMethod.total_amount)
+    : selectedProduct
+    ? formatIDR(getProductStartingPrice(selectedProduct))
     : 'Belum tersedia'
   const canCheckout =
     PURCHASES_ENABLED &&
     Boolean(selectedProduct) &&
     Boolean(userId) &&
     (!requiresZone || Boolean(zoneId)) &&
-    Boolean(paymentMethod) &&
+    Boolean(selectedQuoteKey) &&
+    Boolean(selectedPaymentMethod?.enabled) &&
     !paymentMethodsLoading &&
     !paymentMethodsError
   const disabledReason = !PURCHASES_ENABLED
@@ -477,7 +503,7 @@ export default function GameDetailClient ({ slug }: { slug: string }) {
     ? 'Metode pembayaran sedang dimuat.'
     : paymentMethodsError
     ? paymentMethodsError
-    : !paymentMethod
+    : !selectedQuoteKey
     ? 'Pilih metode pembayaran untuk melanjutkan.'
     : ''
 
@@ -523,7 +549,25 @@ export default function GameDetailClient ({ slug }: { slug: string }) {
 
     setAccountWarning(false)
     setAccountAttention(false)
+    setSelectedQuoteKey('')
+    setPaymentMethods([])
+    setPaymentMethodsError('')
     setSelectedProduct(product)
+
+    if (paymentScrollTimerRef.current !== null) {
+      window.clearTimeout(paymentScrollTimerRef.current)
+    }
+
+    paymentScrollTimerRef.current = window.setTimeout(() => {
+      const paymentSection = paymentSectionRef.current
+
+      paymentSection?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start'
+      })
+      paymentSection?.focus({ preventScroll: true })
+      paymentScrollTimerRef.current = null
+    }, 180)
   }
 
   const handleCheckout = async () => {
@@ -540,13 +584,15 @@ export default function GameDetailClient ({ slug }: { slug: string }) {
 
     setIsProcessing(true)
     try {
+      await prepareMidtransSnap()
+
       const res = await fetch(`${API_BASE_URL}/checkout`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           product_id: selectedProduct.ID,
           customer_phone: selectedTarget,
-          payment_method: paymentMethod
+          quote_key: selectedQuoteKey
         })
       })
 
@@ -563,8 +609,12 @@ export default function GameDetailClient ({ slug }: { slug: string }) {
               'Checkout belum berhasil.')
         )
       }
-    } catch {
-      alert('Terjadi kesalahan sistem.')
+    } catch (error) {
+      alert(
+        error instanceof Error
+          ? error.message
+          : 'Terjadi kesalahan sistem.'
+      )
     } finally {
       setIsProcessing(false)
     }
@@ -663,9 +713,7 @@ export default function GameDetailClient ({ slug }: { slug: string }) {
                 : undefined
             }
             name={game.name}
-            purchasesEnabled={PURCHASES_ENABLED}
             shortName={shortName}
-            onBack={() => router.push('/#game')}
           />
 
           <div className='mt-4 grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_370px]'>
@@ -690,7 +738,7 @@ export default function GameDetailClient ({ slug }: { slug: string }) {
                 </section>
               )}
 
-              <div className='lg:sticky lg:top-[104px] lg:z-20'>
+              <div className='lg:sticky lg:top-[104px] lg:z-30'>
                 <CheckoutStepper currentStep={currentStep} />
               </div>
 
@@ -718,14 +766,20 @@ export default function GameDetailClient ({ slug }: { slug: string }) {
                 onSelect={handleSelectProduct}
               />
 
-              <PaymentMethodSelector
-                hasSelectedProduct={Boolean(selectedProduct)}
-                loading={paymentMethodsLoading}
-                error={paymentMethodsError}
-                methods={paymentMethods}
-                selectedCode={paymentMethod}
-                onSelect={setPaymentMethod}
-              />
+              <div
+                ref={paymentSectionRef}
+                tabIndex={-1}
+                className='scroll-mt-[168px] outline-none lg:scroll-mt-[252px]'
+              >
+                <PaymentMethodSelector
+                  hasSelectedProduct={Boolean(selectedProduct)}
+                  loading={paymentMethodsLoading}
+                  error={paymentMethodsError}
+                  methods={paymentMethods}
+                  selectedQuoteKey={selectedQuoteKey}
+                  onSelect={setSelectedQuoteKey}
+                />
+              </div>
               <div className='lg:hidden'>
                 <OrderSummary
                   canCheckout={canCheckout}
@@ -735,9 +789,10 @@ export default function GameDetailClient ({ slug }: { slug: string }) {
                   rows={summaryRows(
                     game.name,
                     selectedProduct,
-                    selectedTarget,
-                    paymentMethodLabel
+                    selectedTarget
                   )}
+                  productAmountLabel={productAmountLabel}
+                  paymentMethodLabel={paymentMethodLabel}
                   totalLabel={totalLabel}
                   onCheckout={handleCheckout}
                 />
@@ -754,9 +809,10 @@ export default function GameDetailClient ({ slug }: { slug: string }) {
                   rows={summaryRows(
                     game.name,
                     selectedProduct,
-                    selectedTarget,
-                    paymentMethodLabel
+                    selectedTarget
                   )}
+                  productAmountLabel={productAmountLabel}
+                  paymentMethodLabel={paymentMethodLabel}
                   totalLabel={totalLabel}
                   onCheckout={handleCheckout}
                 />

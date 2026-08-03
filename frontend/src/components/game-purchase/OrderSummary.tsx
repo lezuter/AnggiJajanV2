@@ -6,6 +6,8 @@ interface OrderSummaryProps {
   isProcessing: boolean
   purchasesEnabled: boolean
   rows: string[][]
+  productAmountLabel: string
+  paymentMethodLabel: string
   totalLabel: string
   onCheckout: () => void
 }
@@ -16,6 +18,8 @@ export default function OrderSummary ({
   isProcessing,
   purchasesEnabled,
   rows,
+  productAmountLabel,
+  paymentMethodLabel,
   totalLabel,
   onCheckout
 }: OrderSummaryProps) {
@@ -24,27 +28,16 @@ export default function OrderSummary ({
       aria-labelledby='order-summary-title'
       className='rounded-[24px] border border-white/[0.08] bg-black/[0.035] p-5 shadow-[0_22px_70px_rgba(0,0,0,0.22)] backdrop-blur-md backdrop-saturate-150 sm:p-6'
     >
-      <div className='flex items-start justify-between gap-4'>
-        <div>
-          <p className='font-mono text-[10px] uppercase tracking-[0.12em] text-white/[0.42]'>
-            Ringkasan
-          </p>
-          <h2
-            id='order-summary-title'
-            className='mt-2 text-[28px] font-medium tracking-[-0.035em] text-white'
-          >
-            Pesanan
-          </h2>
-        </div>
-        <span className='inline-flex items-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.025] px-3 py-1.5 font-mono text-[9px] uppercase tracking-[0.08em] text-white/[0.56]'>
-          <span
-            aria-hidden='true'
-            className={`h-1.5 w-1.5 rounded-full ${
-              purchasesEnabled ? 'bg-blue-400' : 'bg-white/[0.34]'
-            }`}
-          />
-          {purchasesEnabled ? 'Aktif' : 'Preview'}
-        </span>
+      <div>
+        <p className='font-mono text-[10px] uppercase tracking-[0.12em] text-white/[0.42]'>
+          Ringkasan
+        </p>
+        <h2
+          id='order-summary-title'
+          className='mt-2 text-[28px] font-medium tracking-[-0.035em] text-white'
+        >
+          Pesanan
+        </h2>
       </div>
 
       <dl className='mt-7 space-y-4'>
@@ -61,14 +54,24 @@ export default function OrderSummary ({
         ))}
       </dl>
 
-      <div className='mt-5 border-t border-white/[0.1] pt-5'>
-        <p className='font-mono text-[10px] uppercase tracking-[0.1em] text-white/[0.42]'>
-          Total pembayaran
-        </p>
-        <p className='mt-2 break-words text-2xl font-medium tracking-[-0.035em] text-white'>
-          {totalLabel}
-        </p>
-      </div>
+      <dl className='mt-5 space-y-3 border-t border-white/[0.1] pt-5'>
+        <div className='flex items-center justify-between gap-4 text-sm'>
+          <dt className='text-white/[0.44]'>Harga produk</dt>
+          <dd className='text-right text-white/[0.72]'>{productAmountLabel}</dd>
+        </div>
+        <div className='flex items-center justify-between gap-4 text-sm'>
+          <dt className='text-white/[0.44]'>Pembayaran</dt>
+          <dd className='text-right text-white/[0.72]'>{paymentMethodLabel}</dd>
+        </div>
+        <div className='flex items-end justify-between gap-4 border-t border-white/[0.08] pt-4'>
+          <dt className='font-mono text-[10px] uppercase tracking-[0.1em] text-white/[0.48]'>
+            Total
+          </dt>
+          <dd className='break-words text-right text-2xl font-medium tracking-[-0.035em] text-white'>
+            {totalLabel}
+          </dd>
+        </div>
+      </dl>
 
       <button
         type='button'

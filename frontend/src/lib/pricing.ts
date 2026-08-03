@@ -1,6 +1,7 @@
 interface ProductPriceLike {
   price?: number | null
   selling_price?: number | null
+  starting_price?: number | null
 }
 
 const FALLBACK_STOREFRONT_MARKUP = 1.05
@@ -21,4 +22,16 @@ export function getProductSellingPrice (product: ProductPriceLike): number {
 
   // Compatibility for a frontend deployed briefly before the updated backend.
   return Math.round(Math.round(capital) * FALLBACK_STOREFRONT_MARKUP)
+}
+
+export function getProductStartingPrice (product: ProductPriceLike): number {
+  if (
+    typeof product.starting_price === 'number' &&
+    Number.isFinite(product.starting_price) &&
+    product.starting_price >= 0
+  ) {
+    return Math.round(product.starting_price)
+  }
+
+  return getProductSellingPrice(product)
 }

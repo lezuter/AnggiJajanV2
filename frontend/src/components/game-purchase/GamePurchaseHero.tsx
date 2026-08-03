@@ -12,9 +12,7 @@ interface GamePurchaseHeroProps {
   bannerUrl?: string
   characterVideoUrl?: string
   name: string
-  purchasesEnabled: boolean
   shortName: string
-  onBack: () => void
 }
 
 function HeroBannerArtwork ({ bannerUrl }: { bannerUrl: string }) {
@@ -75,9 +73,7 @@ export default function GamePurchaseHero ({
   bannerUrl,
   characterVideoUrl,
   name,
-  purchasesEnabled,
-  shortName,
-  onBack
+  shortName
 }: GamePurchaseHeroProps) {
   const publisherLabel = publisher?.trim() || category
   const hasRegion = Boolean(region?.trim())
@@ -94,44 +90,7 @@ export default function GamePurchaseHero ({
         />
       )}
 
-      <div className='relative z-10 flex min-w-0 items-center justify-between gap-3 lg:-translate-y-2'>
-        <button
-          type='button'
-          onClick={onBack}
-          className='inline-flex min-h-10 shrink-0 items-center gap-2 rounded-full border border-white/[0.08] bg-black/[0.035] px-4 font-mono text-[10px] uppercase tracking-[0.08em] text-white/[0.62] shadow-[0_12px_36px_rgba(0,0,0,0.2)] backdrop-blur-md backdrop-saturate-150 transition-[border-color,color,background-color] duration-300 hover:border-white/[0.16] hover:bg-white/[0.045] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-400/70'
-        >
-          <svg
-            aria-hidden='true'
-            viewBox='0 0 20 20'
-            fill='none'
-            className='h-3.5 w-3.5'
-          >
-            <path
-              d='m11.5 5-5 5 5 5'
-              stroke='currentColor'
-              strokeLinecap='round'
-              strokeLinejoin='round'
-              strokeWidth='1.6'
-            />
-          </svg>
-          <span className='sm:hidden'>Katalog</span>
-          <span className='hidden sm:inline'>Kembali ke katalog</span>
-        </button>
-
-        <span className='inline-flex min-h-10 shrink-0 items-center gap-2 rounded-full border border-white/[0.08] bg-black/[0.035] px-3.5 font-mono text-[9px] uppercase tracking-[0.09em] text-white/[0.58] shadow-[0_12px_36px_rgba(0,0,0,0.2)] backdrop-blur-md backdrop-saturate-150 sm:px-4 sm:text-[10px]'>
-          <span
-            aria-hidden='true'
-            className={`h-1.5 w-1.5 rounded-full ${
-              purchasesEnabled
-                ? 'bg-blue-400 shadow-[0_0_12px_rgba(96,165,250,0.7)]'
-                : 'bg-white/[0.38]'
-            }`}
-          />
-          {purchasesEnabled ? 'Pembelian aktif' : 'Mode preview'}
-        </span>
-      </div>
-
-      <div className='relative z-[2] mt-9 grid min-w-0 grid-cols-[104px_minmax(0,1fr)] items-end gap-x-5 gap-y-7 sm:mt-10 sm:grid-cols-[116px_minmax(0,1fr)] sm:gap-x-7 md:grid-cols-12 md:gap-x-6 lg:mt-12 lg:gap-x-8'>
+      <div className='relative z-[2] grid min-w-0 grid-cols-[104px_minmax(0,1fr)] items-end gap-x-5 gap-y-7 sm:grid-cols-[116px_minmax(0,1fr)] sm:gap-x-7 md:grid-cols-12 md:gap-x-6 lg:gap-x-8'>
         <GlareCard className='col-start-1 row-start-1 aspect-[4/5] w-[104px] sm:w-[116px] md:col-span-2 md:w-[188px] md:justify-self-end md:self-start'>
           {imageUrl ? (
             // eslint-disable-next-line @next/next/no-img-element

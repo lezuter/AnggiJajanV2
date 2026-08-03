@@ -24,3 +24,26 @@ func TestProductArchiveAndDeleteRoutesAreNotRegistered(t *testing.T) {
 		}
 	}
 }
+
+func TestMidtransCustomerRoutesAreRegistered(t *testing.T) {
+	app := fiber.New()
+	SetupRoutes(app)
+
+	requiredRoutes := map[string]bool{
+		"GET /api/payment-config":     false,
+		"GET /api/payment-methods":    false,
+		"POST /api/checkout":          false,
+		"POST /api/callback/midtrans": false,
+	}
+	for _, route := range app.GetRoutes() {
+		key := route.Method + " " + route.Path
+		if _, required := requiredRoutes[key]; required {
+			requiredRoutes[key] = true
+		}
+	}
+	for route, registered := range requiredRoutes {
+		if !registered {
+			t.Fatalf("required Midtrans customer route is not registered: %s", route)
+		}
+	}
+}

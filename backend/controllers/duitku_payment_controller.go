@@ -51,17 +51,26 @@ type duitkuPaymentMethodResponse struct {
 }
 
 type paymentMethodOption struct {
-	Code           string  `json:"code"`
-	Name           string  `json:"name"`
-	Category       string  `json:"category"`
-	ImageURL       string  `json:"image_url"`
-	ServiceFee     float64 `json:"service_fee"`
-	TotalAmount    float64 `json:"total_amount"`
-	Enabled        bool    `json:"enabled"`
-	Recommended    bool    `json:"recommended"`
-	DisabledReason string  `json:"disabled_reason"`
+	QuoteKey           string  `json:"quote_key"`
+	Code               string  `json:"code"`
+	Name               string  `json:"name"`
+	Category           string  `json:"category"`
+	ImageURL           string  `json:"image_url"`
+	Enabled            bool    `json:"enabled"`
+	DisabledReason     string  `json:"disabled_reason"`
+	Provider           string  `json:"provider"`
+	ProviderMethod     string  `json:"provider_method"`
+	ProductAmount      float64 `json:"product_amount"`
+	ServiceFee         float64 `json:"service_fee"`
+	CustomerSurcharge  float64 `json:"customer_surcharge"`
+	TotalAmount        float64 `json:"total_amount"`
+	Recommended        bool    `json:"recommended"`
+	RecommendationRank int     `json:"recommendation_rank"`
 
-	merchantFee float64
+	merchantFee      float64
+	paymentFeeBearer string
+	providerActive   bool
+	minimumAmount    float64
 }
 
 type duitkuFeeRule struct {
@@ -551,6 +560,10 @@ func requestDuitkuTransaction(
 	return result, nil
 }
 func paymentSettingValue(key, fallback string) string {
+	if database.DB == nil {
+		return fallback
+	}
+
 	var setting models.Setting
 	if err := database.DB.Where("key = ?", key).First(&setting).Error; err != nil {
 		return fallback
@@ -592,6 +605,213 @@ func estimateDuitkuMerchantFee(
 		rule.Category,
 		minimumAmount,
 		!rule.RequiresFeeConfiguration
+}
+
+func paymentQuoteKey(provider, providerMethod string) string {
+	return fmt.Sprintf(
+		"v1:%s:%s",
+		strings.ToLower(strings.TrimSpace(provider)),
+		strings.ToUpper(strings.TrimSpace(providerMethod)),
+	)
+}
+
+// calculateQuotedTotal mencari nominal rupiah bulat terkecil yang tetap
+// menyisakan targetNet setelah merchant fee dihitung dari nominal final itu.
+func calculateQuotedTotal(
+	targetNet float64,
+	estimateMerchantFee func(totalAmount float64) float64,
+) (totalAmount float64, merchantFee float64) {
+	targetNet = math.Ceil(targetNet)
+	totalAmount = targetNet
+
+	for iteration := 0; iteration < 32; iteration++ {
+		merchantFee = math.Ceil(estimateMerchantFee(totalAmount))
+		if merchantFee < 0 {
+			merchantFee = 0
+		}
+
+		requiredTotal := math.Ceil(targetNet + merchantFee)
+		if totalAmount >= requiredTotal {
+			return totalAmount, merchantFee
+		}
+		totalAmount = requiredTotal
+	}
+
+	merchantFee = math.Ceil(estimateMerchantFee(totalAmount))
+	if totalAmount-merchantFee < targetNet {
+		totalAmount = math.Ceil(targetNet + merchantFee)
+		merchantFee = math.Ceil(estimateMerchantFee(totalAmount))
+	}
+
+	return totalAmount, merchantFee
+}
+
+func isBetterQRISQuote(candidate, current paymentMethodOption) bool {
+	if candidate.Enabled != current.Enabled {
+		return candidate.Enabled
+	}
+	if candidate.TotalAmount != current.TotalAmount {
+		return candidate.TotalAmount < current.TotalAmount
+	}
+	if candidate.merchantFee != current.merchantFee {
+		return candidate.merchantFee < current.merchantFee
+	}
+	return candidate.ProviderMethod < current.ProviderMethod
+}
+
+// logicalPaymentQuotes menghapus duplikasi response gateway dan merangkum
+// seluruh varian QRIS menjadi satu pilihan generik. ProviderMethod tetap
+// menyimpan channel aktual yang akan digunakan saat inquiry.
+func logicalPaymentQuotes(options []paymentMethodOption) []paymentMethodOption {
+	unique := make(map[string]paymentMethodOption, len(options))
+	order := make([]string, 0, len(options))
+	var qris *paymentMethodOption
+
+	for _, option := range options {
+		if option.Category == "QRIS" {
+			candidate := option
+			if qris == nil || isBetterQRISQuote(candidate, *qris) {
+				qris = &candidate
+			}
+			continue
+		}
+
+		key := strings.ToLower(option.Provider) + "|" +
+			strings.ToUpper(option.ProviderMethod)
+		if current, exists := unique[key]; exists {
+			if isBetterQRISQuote(option, current) {
+				unique[key] = option
+			}
+			continue
+		}
+
+		unique[key] = option
+		order = append(order, key)
+	}
+
+	result := make([]paymentMethodOption, 0, len(unique)+1)
+	if qris != nil {
+		qris.Code = "QRIS"
+		qris.Name = "QRIS"
+		qris.Category = "QRIS"
+		qris.ImageURL = ""
+		result = append(result, *qris)
+	}
+
+	for _, key := range order {
+		result = append(result, unique[key])
+	}
+
+	return result
+}
+
+func finalizePaymentQuotes(options []paymentMethodOption) []paymentMethodOption {
+	options = logicalPaymentQuotes(options)
+
+	for index := range options {
+		options[index].Recommended = false
+		options[index].RecommendationRank = 0
+	}
+
+	for rank, optionIndex := range chooseRecommendedPaymentMethods(options) {
+		options[optionIndex].RecommendationRank = rank + 1
+		options[optionIndex].Recommended = rank == 0
+	}
+
+	sort.SliceStable(options, func(first, second int) bool {
+		firstRanked := options[first].RecommendationRank > 0
+		secondRanked := options[second].RecommendationRank > 0
+
+		if firstRanked != secondRanked {
+			return firstRanked
+		}
+		if firstRanked &&
+			options[first].RecommendationRank != options[second].RecommendationRank {
+			return options[first].RecommendationRank <
+				options[second].RecommendationRank
+		}
+		if options[first].Enabled != options[second].Enabled {
+			return options[first].Enabled
+		}
+
+		firstRank := categoryRank(options[first].Category)
+		secondRank := categoryRank(options[second].Category)
+		if firstRank != secondRank {
+			return firstRank < secondRank
+		}
+		return options[first].Name < options[second].Name
+	})
+
+	return options
+}
+
+func buildDuitkuPaymentQuotes(
+	ctx context.Context,
+	product models.Product,
+) ([]paymentMethodOption, error) {
+	capital := math.Round(product.Price)
+	targetNet := models.CalculateSellingPrice(capital)
+	methods, err := fetchDuitkuPaymentMethods(
+		ctx,
+		int64(math.Round(targetNet)),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	feeBearer := strings.ToUpper(
+		paymentSettingValue("payment_fee_bearer", "MERCHANT"),
+	)
+	options := make([]paymentMethodOption, 0, len(methods))
+
+	for _, method := range methods {
+		code := strings.ToUpper(strings.TrimSpace(method.PaymentMethod))
+		_, category, minimumAmount, configured :=
+			estimateDuitkuMerchantFee(code, targetNet)
+		totalAmount, merchantFee := calculateQuotedTotal(
+			targetNet,
+			func(amount float64) float64 {
+				fee, _, _, _ := estimateDuitkuMerchantFee(code, amount)
+				return fee
+			},
+		)
+
+		enabled := configured &&
+			targetNet >= duitkuMinimumTransactionAmount &&
+			totalAmount >= minimumAmount
+		disabledReason := ""
+		switch {
+		case targetNet < duitkuMinimumTransactionAmount:
+			disabledReason = "Metode ini tersedia melalui Tripay untuk nominal di bawah Rp10.000."
+		case !configured && category != "OTHER":
+			disabledReason = "Biaya metode ini belum dikonfigurasi."
+		case !configured:
+			disabledReason = "Metode ini belum tersedia."
+		case totalAmount < minimumAmount:
+			disabledReason = "Nominal belum memenuhi batas minimum."
+		}
+
+		customerSurcharge := totalAmount - targetNet
+		options = append(options, paymentMethodOption{
+			QuoteKey:          paymentQuoteKey("duitku", code),
+			Code:              code,
+			Name:              strings.TrimSpace(method.PaymentName),
+			Category:          category,
+			ImageURL:          strings.TrimSpace(method.PaymentImage),
+			Enabled:           enabled,
+			DisabledReason:    disabledReason,
+			Provider:          "duitku",
+			ProviderMethod:    code,
+			ProductAmount:     targetNet,
+			ServiceFee:        customerSurcharge,
+			CustomerSurcharge: customerSurcharge,
+			TotalAmount:       totalAmount,
+			merchantFee:       merchantFee,
+			paymentFeeBearer:  feeBearer,
+		})
+	}
+
+	return finalizePaymentQuotes(options), nil
 }
 
 // Setelah batas minimum gateway terpenuhi, net profit minimum bersifat
@@ -638,31 +858,190 @@ func categoryRank(category string) int {
 	}
 }
 
-func chooseRecommendedPaymentMethod(options []paymentMethodOption) int {
+func paymentMethodCost(option paymentMethodOption) float64 {
+	return option.TotalAmount
+}
+
+func isBetterPaymentMethod(
+	candidate paymentMethodOption,
+	current paymentMethodOption,
+) bool {
+	candidateCost := paymentMethodCost(candidate)
+	currentCost := paymentMethodCost(current)
+
+	if candidateCost != currentCost {
+		return candidateCost < currentCost
+	}
+
+	if candidate.Category == "QRIS" && current.Category != "QRIS" {
+		return true
+	}
+	if candidate.Category != "QRIS" && current.Category == "QRIS" {
+		return false
+	}
+
+	candidateRank := categoryRank(candidate.Category)
+	currentRank := categoryRank(current.Category)
+	if candidateRank != currentRank {
+		return candidateRank < currentRank
+	}
+
+	if candidate.Name != current.Name {
+		return candidate.Name < current.Name
+	}
+
+	return candidate.Code < current.Code
+}
+
+// Ranking dibuat sepenuhnya di backend karena hanya backend yang mengetahui
+// estimasi merchant fee. Rank kedua wajib berasal dari kategori berbeda agar
+// beberapa channel QRIS yang identik tidak memenuhi kedua slot rekomendasi.
+func chooseBestPaymentMethodIndex(
+	options []paymentMethodOption,
+	category string,
+	excludedIndex int,
+	requireDifferentCategory string,
+) int {
 	bestIndex := -1
 
 	for index := range options {
-		if !options[index].Enabled {
+		if !options[index].Enabled || index == excludedIndex {
+			continue
+		}
+		if category != "" && options[index].Category != category {
+			continue
+		}
+		if requireDifferentCategory != "" &&
+			options[index].Category == requireDifferentCategory {
 			continue
 		}
 
-		if bestIndex == -1 {
-			bestIndex = index
-			continue
-		}
-
-		currentCost := options[index].merchantFee + options[index].ServiceFee
-		bestCost := options[bestIndex].merchantFee + options[bestIndex].ServiceFee
-
-		if currentCost < bestCost ||
-			(currentCost == bestCost &&
-				options[index].Category == "QRIS" &&
-				options[bestIndex].Category != "QRIS") {
+		if bestIndex == -1 ||
+			isBetterPaymentMethod(options[index], options[bestIndex]) {
 			bestIndex = index
 		}
 	}
 
 	return bestIndex
+}
+
+// Kebijakan rekomendasi menggabungkan kemudahan penggunaan dan biaya:
+// 1. QRIS selalu menjadi pilihan utama selama aktif dan margin tetap aman.
+// 2. Pilihan kedua adalah e-wallet termurah yang aktif dan margin aman.
+// 3. Jika e-wallet tidak tersedia, gunakan metode termurah dari kategori lain.
+//
+// Tidak ada brand e-wallet yang di-hardcode.
+func chooseRecommendedPaymentMethods(
+	options []paymentMethodOption,
+) []int {
+	firstIndex := chooseBestPaymentMethodIndex(
+		options,
+		"QRIS",
+		-1,
+		"",
+	)
+
+	if firstIndex == -1 {
+		firstIndex = chooseBestPaymentMethodIndex(
+			options,
+			"",
+			-1,
+			"",
+		)
+	}
+	if firstIndex == -1 {
+		return nil
+	}
+
+	secondIndex := chooseBestPaymentMethodIndex(
+		options,
+		"E_WALLET",
+		firstIndex,
+		"",
+	)
+
+	if secondIndex == -1 {
+		secondIndex = chooseBestPaymentMethodIndex(
+			options,
+			"",
+			firstIndex,
+			options[firstIndex].Category,
+		)
+	}
+
+	if secondIndex == -1 {
+		return []int{firstIndex}
+	}
+
+	return []int{firstIndex, secondIndex}
+}
+
+func buildPaymentQuotes(
+	ctx context.Context,
+	product models.Product,
+) ([]paymentMethodOption, string, error) {
+	targetNet := models.CalculateSellingPrice(math.Round(product.Price))
+	if targetNet < duitkuMinimumTransactionAmount {
+		options, err := buildTripayPaymentQuotes(ctx, product)
+		return options, "tripay", err
+	}
+
+	options, err := buildDuitkuPaymentQuotes(ctx, product)
+	return options, "duitku", err
+}
+
+func findPaymentQuote(
+	options []paymentMethodOption,
+	quoteKey string,
+) (paymentMethodOption, bool) {
+	quoteKey = strings.TrimSpace(quoteKey)
+	for _, option := range options {
+		if option.QuoteKey == quoteKey {
+			return option, true
+		}
+	}
+	return paymentMethodOption{}, false
+}
+
+func minimumLogicalTransactionAmount(
+	options []paymentMethodOption,
+) (float64, bool) {
+	minimumAmount := 0.0
+	found := false
+
+	for _, option := range options {
+		if !option.providerActive {
+			continue
+		}
+		if !found || option.minimumAmount < minimumAmount {
+			minimumAmount = option.minimumAmount
+			found = true
+		}
+	}
+
+	return minimumAmount, found
+}
+
+func paymentMethodsResponse(
+	paymentProvider string,
+	feeBearer string,
+	productAmount float64,
+	options []paymentMethodOption,
+) fiber.Map {
+	response := fiber.Map{
+		"payment_provider": paymentProvider,
+		"fee_bearer":       feeBearer,
+		"product_amount":   productAmount,
+		"methods":          options,
+	}
+
+	if paymentProvider == "duitku" {
+		response["minimum_transaction_amount"] = duitkuMinimumTransactionAmount
+	} else if minimumAmount, found := minimumLogicalTransactionAmount(options); found {
+		response["minimum_transaction_amount"] = minimumAmount
+	}
+
+	return response
 }
 
 // GetPaymentMethods hanya mengembalikan informasi yang aman untuk customer.
@@ -694,25 +1073,10 @@ func GetPaymentMethods(c *fiber.Ctx) error {
 		})
 	}
 
-	capital := math.Round(product.Price)
-	productAmount := models.CalculateSellingPrice(capital)
-	grossProfit := productAmount - capital
-	feeBearer := strings.ToUpper(
-		paymentSettingValue("payment_fee_bearer", "MERCHANT"),
-	)
-	minimumNetProfit := paymentSettingFloat("minimum_net_profit", 1500)
-	minimumRetention := paymentSettingFloat(
-		"minimum_profit_retention_percent",
-		50,
-	)
-
 	requestContext, cancel := context.WithTimeout(c.UserContext(), 15*time.Second)
 	defer cancel()
 
-	methods, err := fetchDuitkuPaymentMethods(
-		requestContext,
-		int64(math.Round(productAmount)),
-	)
+	options, paymentProvider, err := buildPaymentQuotes(requestContext, product)
 	if err != nil {
 		return c.Status(fiber.StatusBadGateway).JSON(fiber.Map{
 			"error":  "Metode pembayaran belum bisa dimuat",
@@ -720,75 +1084,15 @@ func GetPaymentMethods(c *fiber.Ctx) error {
 		})
 	}
 
-	options := make([]paymentMethodOption, 0, len(methods))
-	for _, method := range methods {
-		code := strings.ToUpper(strings.TrimSpace(method.PaymentMethod))
-		merchantFee, category, minimumAmount, configured :=
-			estimateDuitkuMerchantFee(code, productAmount)
+	productAmount := models.CalculateSellingPrice(math.Round(product.Price))
+	feeBearer := strings.ToUpper(
+		paymentSettingValue("payment_fee_bearer", "MERCHANT"),
+	)
 
-		globalMinimumMet := productAmount >= duitkuMinimumTransactionAmount
-		enabled := globalMinimumMet &&
-			configured &&
-			productAmount >= minimumAmount &&
-			isPaymentMethodAllowed(
-				grossProfit,
-				merchantFee,
-				minimumNetProfit,
-				minimumRetention,
-			)
-
-		disabledReason := ""
-		switch {
-		case !globalMinimumMet:
-			disabledReason = "Minimum transaksi Duitku Rp10.000."
-		case !configured && category != "OTHER":
-			disabledReason = "Biaya metode ini belum dikonfigurasi."
-		case !configured:
-			disabledReason = "Metode ini belum tersedia."
-		case productAmount < minimumAmount:
-			disabledReason = "Nominal belum memenuhi batas minimum."
-		case !enabled:
-			disabledReason = "Tidak tersedia untuk nominal ini."
-		}
-
-		options = append(options, paymentMethodOption{
-			Code:           code,
-			Name:           strings.TrimSpace(method.PaymentName),
-			Category:       category,
-			ImageURL:       strings.TrimSpace(method.PaymentImage),
-			ServiceFee:     0,
-			TotalAmount:    productAmount,
-			Enabled:        enabled,
-			DisabledReason: disabledReason,
-			merchantFee:    merchantFee,
-		})
-	}
-
-	if recommendedIndex := chooseRecommendedPaymentMethod(options); recommendedIndex >= 0 {
-		options[recommendedIndex].Recommended = true
-	}
-
-	sort.SliceStable(options, func(first, second int) bool {
-		if options[first].Recommended != options[second].Recommended {
-			return options[first].Recommended
-		}
-		if options[first].Enabled != options[second].Enabled {
-			return options[first].Enabled
-		}
-
-		firstRank := categoryRank(options[first].Category)
-		secondRank := categoryRank(options[second].Category)
-		if firstRank != secondRank {
-			return firstRank < secondRank
-		}
-		return options[first].Name < options[second].Name
-	})
-
-	return c.JSON(fiber.Map{
-		"payment_provider":           "duitku",
-		"fee_bearer":                 feeBearer,
-		"product_amount":             productAmount,
-		"minimum_transaction_amount": duitkuMinimumTransactionAmount,
-		"methods":                    options,
-	})
+	return c.JSON(paymentMethodsResponse(
+		paymentProvider,
+		feeBearer,
+		productAmount,
+		options,
+	))
 }
