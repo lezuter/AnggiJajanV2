@@ -163,14 +163,93 @@ func TestMissingDigiflazzProductIsMarkedProviderRemoved(t *testing.T) {
 	}
 }
 
+func TestMissingDigiflazzUpdatesPreserveExistingRemovalTimestamp(t *testing.T) {
+	updates := missingDigiflazzProductUpdates()
+	if _, overwritesTimestamp := updates["provider_removed_at"]; overwritesTimestamp {
+		t.Fatal("repeated missing-SKU updates must not overwrite provider_removed_at")
+	}
+}
+
+func TestProtectedDigiflazzTestProductClearsRemovalTimestamp(t *testing.T) {
+	updates := protectedDigiflazzTestProductUpdates()
+	value, exists := updates["provider_removed_at"]
+	if !exists || value != nil {
+		t.Fatalf("TEST product must clear provider_removed_at, got %#v", value)
+	}
+}
+
 func TestProviderRemovedProductPermanentDeleteRules(t *testing.T) {
-	if err := validateProviderProductPermanentDelete(false, 0); !errors.Is(err, errProviderProductStillPresent) {
+	now := time.Date(2026, time.August, 5, 0, 0, 0, 0, time.UTC)
+	oldRemovedAt := now.Add(-providerRemovalRetention)
+	recentRemovedAt := now.Add(-30 * 24 * time.Hour)
+
+	present := models.Product{Code: "SKU-1"}
+	if err := validateProviderProductPermanentDelete(present, 0, "SKU-1", now); !errors.Is(err, errProviderProductStillPresent) {
 		t.Fatalf("present provider product must be rejected, got %v", err)
 	}
-	if err := validateProviderProductPermanentDelete(true, 1); !errors.Is(err, errProviderProductHasHistory) {
+
+	missingDate := models.Product{Code: "SKU-1", ProviderRemoved: true}
+	if err := validateProviderProductPermanentDelete(missingDate, 0, "SKU-1", now); !errors.Is(err, errProviderRemovalDateMissing) {
+		t.Fatalf("missing removal date must be rejected, got %v", err)
+	}
+
+	recent := models.Product{Code: "SKU-1", ProviderRemoved: true, ProviderRemovedAt: &recentRemovedAt}
+	if err := validateProviderProductPermanentDelete(recent, 0, "SKU-1", now); !errors.Is(err, errProviderRemovalRetentionActive) {
+		t.Fatalf("recently removed product must be retained, got %v", err)
+	}
+
+	eligible := models.Product{Code: "SKU-1", ProviderRemoved: true, ProviderRemovedAt: &oldRemovedAt}
+	if err := validateProviderProductPermanentDelete(eligible, 1, "SKU-1", now); !errors.Is(err, errProviderProductHasHistory) {
 		t.Fatalf("product with transactions must be rejected, got %v", err)
 	}
-	if err := validateProviderProductPermanentDelete(true, 0); err != nil {
-		t.Fatalf("removed product without history should be deletable: %v", err)
+	if err := validateProviderProductPermanentDelete(eligible, 0, "sku-1", now); !errors.Is(err, errProviderDeleteConfirmationInvalid) {
+		t.Fatalf("confirmation must be case-sensitive, got %v", err)
+	}
+	if err := validateProviderProductPermanentDelete(eligible, 0, " SKU-1 ", now); err != nil {
+		t.Fatalf("eligible product with matching confirmation should be deletable: %v", err)
+	}
+}
+
+func TestPresentDigiflazzProductClearsRemovalTimestampAndKeepsAdminState(t *testing.T) {
+	removedAt := time.Date(2026, time.May, 1, 0, 0, 0, 0, time.UTC)
+	existing := &models.Product{
+		AdminEnabled:      true,
+		ProviderRemoved:   true,
+		ProviderRemovedAt: &removedAt,
+	}
+	plan := planDigiflazzProduct(
+		digiflazzProductSnapshot{SKU: "RETURNED", Name: "Returned", Price: 1000, Stock: -1, IsActive: true},
+		map[string]bool{"GAME": true},
+		existing,
+	)
+	if plan.Action != digiflazzSyncUpdate {
+		t.Fatalf("expected update plan, got %d", plan.Action)
+	}
+	if value, exists := plan.Updates["provider_removed_at"]; !exists || value != nil {
+		t.Fatalf("present SKU must clear provider_removed_at, got %#v", value)
+	}
+	if _, changesAdminState := plan.Updates["admin_enabled"]; changesAdminState {
+		t.Fatal("returning existing SKU must preserve admin_enabled")
+	}
+}
+
+func TestNewDigiflazzProductStartsStoreDisabled(t *testing.T) {
+	plan := planDigiflazzProduct(
+		digiflazzProductSnapshot{
+			SKU:             "NEW-SKU",
+			Name:            "New product",
+			CatalogCardCode: "GAME",
+			Price:           1000,
+			Stock:           -1,
+			IsActive:        true,
+		},
+		map[string]bool{"GAME": true},
+		nil,
+	)
+	if plan.Action != digiflazzSyncCreate || plan.Create == nil {
+		t.Fatalf("expected create plan, got %#v", plan)
+	}
+	if plan.Create.AdminEnabled {
+		t.Fatal("new provider SKU must require admin review")
 	}
 }

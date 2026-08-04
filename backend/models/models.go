@@ -62,26 +62,27 @@ type ProductGroup struct {
 // Product Model
 type Product struct {
 	gorm.Model
-	Name            string        `json:"name"`
-	Code            string        `gorm:"not null;index" json:"code"`
-	Price           float64       `json:"price"`
-	SellingPrice    float64       `json:"selling_price" gorm:"-"`
-	StartingPrice   float64       `json:"starting_price" gorm:"-"`
-	StartingMethod  string        `json:"starting_payment_method" gorm:"-"`
-	OriginalPrice   *float64      `json:"original_price" gorm:"column:original_price"`
-	Stock           int           `json:"stock" gorm:"default:0"`
-	IsActive        bool          `json:"is_active" gorm:"default:true;index"` // Status ketersediaan dari provider.
-	AdminEnabled    bool          `json:"admin_enabled" gorm:"default:true;index"`
-	IsArchived      bool          `json:"is_archived" gorm:"default:false;index"` // Kolom kompatibilitas; tidak digunakan oleh workflow admin.
-	ImageURL        string        `json:"image_url"`
-	CatalogCardCode string        `json:"catalog_cardcode" gorm:"column:catalog_cardcode;not null;index"`
-	Catalog         Catalog       `gorm:"foreignKey:CatalogCardCode;references:CardCode;constraint:OnUpdate:CASCADE,OnDelete:RESTRICT;" json:"catalog"`
-	ProductGroupID  *uint         `json:"product_group_id" gorm:"index"`
-	ProductGroup    *ProductGroup `json:"product_group,omitempty" gorm:"foreignKey:ProductGroupID;constraint:OnUpdate:CASCADE,OnDelete:SET NULL;"`
-	SortOrder       int           `json:"sort_order" gorm:"not null;default:0;index;check:chk_product_sort_order_nonnegative,sort_order >= 0"`
-	Provider        string        `json:"provider" gorm:"default:'digiflazz';index"`
-	ProviderRemoved    bool       `gorm:"column:provider_removed;not null;default:false;index" json:"provider_removed"`
-	ProviderLastSeenAt *time.Time `gorm:"column:provider_last_seen_at;index" json:"provider_last_seen_at,omitempty"`
+	Name               string        `json:"name"`
+	Code               string        `gorm:"not null;index" json:"code"`
+	Price              float64       `json:"price"`
+	SellingPrice       float64       `json:"selling_price" gorm:"-"`
+	StartingPrice      float64       `json:"starting_price" gorm:"-"`
+	StartingMethod     string        `json:"starting_payment_method" gorm:"-"`
+	OriginalPrice      *float64      `json:"original_price" gorm:"column:original_price"`
+	Stock              int           `json:"stock" gorm:"default:0"`
+	IsActive           bool          `json:"is_active" gorm:"default:true;index"` // Status ketersediaan dari provider.
+	AdminEnabled       bool          `json:"admin_enabled" gorm:"default:true;index"`
+	IsArchived         bool          `json:"is_archived" gorm:"default:false;index"` // Kolom kompatibilitas; tidak digunakan oleh workflow admin.
+	ImageURL           string        `json:"image_url"`
+	CatalogCardCode    string        `json:"catalog_cardcode" gorm:"column:catalog_cardcode;not null;index"`
+	Catalog            Catalog       `gorm:"foreignKey:CatalogCardCode;references:CardCode;constraint:OnUpdate:CASCADE,OnDelete:RESTRICT;" json:"catalog"`
+	ProductGroupID     *uint         `json:"product_group_id" gorm:"index"`
+	ProductGroup       *ProductGroup `json:"product_group,omitempty" gorm:"foreignKey:ProductGroupID;constraint:OnUpdate:CASCADE,OnDelete:SET NULL;"`
+	SortOrder          int           `json:"sort_order" gorm:"not null;default:0;index;check:chk_product_sort_order_nonnegative,sort_order >= 0"`
+	Provider           string        `json:"provider" gorm:"default:'digiflazz';index"`
+	ProviderRemoved    bool          `gorm:"column:provider_removed;not null;default:false;index" json:"provider_removed"`
+	ProviderLastSeenAt *time.Time    `gorm:"column:provider_last_seen_at;index" json:"provider_last_seen_at,omitempty"`
+	ProviderRemovedAt  *time.Time    `gorm:"column:provider_removed_at;index" json:"provider_removed_at,omitempty"`
 }
 
 // ProviderSyncState persists provider coordination metadata so cooldowns

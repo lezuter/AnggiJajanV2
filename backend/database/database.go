@@ -427,6 +427,19 @@ func migrateProductGroupIntegrity() error {
 }
 
 func migrateProductLifecycle() error {
+	// AutoMigrate creates provider_removed_at before this migration runs. Existing
+	// tombstones receive one deterministic backfill timestamp only once; future
+	// startups leave that timestamp untouched.
+	providerRemovedBackfillAt := time.Now().UTC()
+	if err := DB.Exec(`
+		UPDATE products
+		SET provider_removed_at = ?
+		WHERE provider_removed = TRUE
+		  AND provider_removed_at IS NULL
+	`, providerRemovedBackfillAt).Error; err != nil {
+		return err
+	}
+
 	if err := DB.Exec(
 		"UPDATE products SET admin_enabled = TRUE WHERE admin_enabled IS NULL",
 	).Error; err != nil {

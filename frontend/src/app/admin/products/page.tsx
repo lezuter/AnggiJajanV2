@@ -10,7 +10,7 @@ import {
   useRef
 } from 'react'
 import {
-  Search, Package, AlertTriangle, TrendingUp,
+  Search, Package, AlertTriangle, Trash2,
   Edit, Gamepad2, Smartphone,
   Zap, Wallet, Loader2, RefreshCw, ListChecks,
   Power, PowerOff, MoveRight, X, Info, FolderTree
@@ -50,6 +50,7 @@ interface Product {
   admin_enabled: boolean;
   provider_removed: boolean;
   provider_last_seen_at?: string | null;
+  provider_removed_at?: string | null;
   provider?: string;
   catalog_cardcode?: string;
   catalog?: Catalog;
@@ -66,6 +67,7 @@ interface ProductEditForm {
 }
 
 type BulkDialog = 'edit' | 'status' | 'move' | 'group' | null
+type ProviderLifecycleFilter = 'present' | 'offline' | 'removed' | 'all'
 
 interface BulkEditForm {
   applyStatus: boolean;
@@ -186,6 +188,63 @@ function formatSyncCountdown(totalSeconds: number) {
   const minutes = Math.floor(safeSeconds / 60)
   const seconds = safeSeconds % 60
   return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+}
+
+const PROVIDER_REMOVAL_RETENTION_MS = 90 * 24 * 60 * 60 * 1000
+
+function matchesProviderLifecycle(
+  product: Product,
+  filter: ProviderLifecycleFilter
+) {
+  switch (filter) {
+    case 'present':
+      return !product.provider_removed
+    case 'offline':
+      return !product.provider_removed && (!product.is_active || product.stock === 0)
+    case 'removed':
+      return product.provider_removed
+    case 'all':
+      return true
+  }
+
+  return true
+}
+
+function formatProviderDate(value?: string | null) {
+  if (!value) return null
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) return null
+  return parsed.toLocaleString('id-ID')
+}
+
+function getProviderRemovalEligibility(product: Product, now = Date.now()) {
+  if (!product.provider_removed || !product.provider_removed_at) {
+    return {
+      eligible: false,
+      removedAt: null as Date | null,
+      eligibleAt: null as Date | null,
+      remainingDays: null as number | null
+    }
+  }
+
+  const removedAt = new Date(product.provider_removed_at)
+  if (Number.isNaN(removedAt.getTime())) {
+    return {
+      eligible: false,
+      removedAt: null as Date | null,
+      eligibleAt: null as Date | null,
+      remainingDays: null as number | null
+    }
+  }
+
+  const eligibleAt = new Date(removedAt.getTime() + PROVIDER_REMOVAL_RETENTION_MS)
+  const remainingMs = Math.max(0, eligibleAt.getTime() - now)
+  return {
+    eligible: remainingMs === 0,
+    removedAt,
+    eligibleAt,
+    remainingDays: Math.ceil(remainingMs / (24 * 60 * 60 * 1000))
+  }
 }
 
 async function readJSONPayload(response: Response): Promise<unknown> {
@@ -426,8 +485,13 @@ export default function ProductsPage() {
   const productGroupRequestIDRef = useRef(0)
   const productGroupMutationLockRef = useRef(false)
   const [searchTerm, setSearchTerm] = useState('')
+  const [providerLifecycleFilter, setProviderLifecycleFilter] =
+    useState<ProviderLifecycleFilter>('present')
   const [selectedItems, setSelectedItems] = useState<number[]>([])
   const [editingProduct, setEditingProduct] = useState<Product | null>(null)
+  const [deletingProduct, setDeletingProduct] = useState<Product | null>(null)
+  const [deleteConfirmation, setDeleteConfirmation] = useState('')
+  const [isDeletingProduct, setIsDeletingProduct] = useState(false)
   const [editForm, setEditForm] = useState<ProductEditForm>({
     image_url: '',
     original_price: ''
@@ -468,7 +532,9 @@ export default function ProductsPage() {
       setCatalogs(fetchedCatalogs)
       setProducts(fetchedProducts)
       const validProductIDs = new Set(
-        fetchedProducts.map(product => product.ID)
+        fetchedProducts
+          .filter(product => !product.provider_removed)
+          .map(product => product.ID)
       )
       setSelectedItems(currentItems =>
         currentItems.filter(productID => validProductIDs.has(productID))
@@ -681,6 +747,8 @@ export default function ProductsPage() {
 
   const openProductEditor = (product: Product) => {
     setBulkDialog(null)
+    setDeletingProduct(null)
+    setDeleteConfirmation('')
     setEditingProduct(product)
     setEditForm({
       image_url: product.image_url || '',
@@ -698,6 +766,80 @@ export default function ProductsPage() {
 
     setEditingProduct(null)
     setThumbnailPreviewError(false)
+  }
+
+  const openPermanentDeleteDialog = (product: Product) => {
+    if (!product.provider_removed) return
+    setBulkDialog(null)
+    setEditingProduct(null)
+    setDeleteConfirmation('')
+    setBulkFeedback(null)
+    setDeletingProduct(product)
+  }
+
+  const closePermanentDeleteDialog = () => {
+    if (isDeletingProduct) return
+    setDeletingProduct(null)
+    setDeleteConfirmation('')
+  }
+
+  const handlePermanentDelete = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (!deletingProduct) return
+
+    const eligibility = getProviderRemovalEligibility(deletingProduct)
+    if (!eligibility.eligible) {
+      setBulkFeedback({
+        type: 'error',
+        message: eligibility.eligibleAt
+          ? `Produk baru dapat dihapus permanen pada ${eligibility.eligibleAt.toLocaleString('id-ID')}.`
+          : 'Tanggal produk dihapus provider belum tersedia.'
+      })
+      return
+    }
+
+    if (deleteConfirmation.trim() !== deletingProduct.code.trim()) {
+      setBulkFeedback({
+        type: 'error',
+        message: 'SKU konfirmasi belum cocok.'
+      })
+      return
+    }
+
+    setIsDeletingProduct(true)
+    setBulkFeedback(null)
+
+    try {
+      const response = await deleteRequest(
+        `/admin/products/${deletingProduct.ID}/permanent`,
+        { confirmation_code: deleteConfirmation.trim() }
+      )
+      const payload = await readJSONPayload(response)
+      if (!response.ok) {
+        throw new Error(
+          getPayloadError(payload, 'Produk gagal dihapus permanen.')
+        )
+      }
+
+      const deletedID = deletingProduct.ID
+      setProducts(current => current.filter(product => product.ID !== deletedID))
+      setSelectedItems(current => current.filter(productID => productID !== deletedID))
+      setDeletingProduct(null)
+      setDeleteConfirmation('')
+      setBulkFeedback({
+        type: 'success',
+        message: `${deletingProduct.name} berhasil dihapus permanen.`
+      })
+    } catch (error) {
+      setBulkFeedback({
+        type: 'error',
+        message: error instanceof Error
+          ? error.message
+          : 'Produk gagal dihapus permanen.'
+      })
+    } finally {
+      setIsDeletingProduct(false)
+    }
   }
 
   const handleProductUpdate = async (event: FormEvent<HTMLFormElement>) => {
@@ -872,18 +1014,37 @@ export default function ProductsPage() {
     handleCatalogChange('all')
   }
 
+  const handleProviderLifecycleFilterChange = (
+    filter: ProviderLifecycleFilter
+  ) => {
+    setProviderLifecycleFilter(filter)
+    setSelectedItems([])
+    setBulkDialog(null)
+    setEditingProduct(null)
+    setDeletingProduct(null)
+    setDeleteConfirmation('')
+    setBulkFeedback(null)
+  }
+
   const productGroupByID = useMemo(
     () => new Map(productGroups.map(group => [group.ID, group])),
     [productGroups]
   )
 
+  const lifecycleScopedProducts = useMemo(
+    () => products.filter(product =>
+      matchesProviderLifecycle(product, providerLifecycleFilter)
+    ),
+    [products, providerLifecycleFilter]
+  )
+
   const activeCatalogProducts = useMemo(
     () => activeCatalog === 'all'
       ? []
-      : products.filter(
+      : lifecycleScopedProducts.filter(
           product => getProductCatalogCode(product) === activeCatalog
         ),
-    [activeCatalog, products]
+    [activeCatalog, lifecycleScopedProducts]
   )
 
   const groupProductCounts = useMemo(() => {
@@ -897,10 +1058,7 @@ export default function ProductsPage() {
     })
 
     productGroups.forEach(group => {
-      if (counts[group.ID] === undefined) {
-        counts[group.ID] =
-          group.product_count ?? group.products?.length ?? 0
-      }
+      if (counts[group.ID] === undefined) counts[group.ID] = 0
     })
 
     return counts
@@ -914,9 +1072,7 @@ export default function ProductsPage() {
   )
 
   const displayedProducts = useMemo(() => {
-    return products.filter(p => {
-      if (p.provider_removed) return false
-      
+    return lifecycleScopedProducts.filter(p => {
       const pCatalogCode = getProductCatalogCode(p)
       const catalogInfo = catalogs.find(c => c.cardcode === pCatalogCode)
       const productGroupID = getProductGroupID(p)
@@ -933,7 +1089,7 @@ export default function ProductsPage() {
       return matchCategory && matchCatalog && matchGroup && matchSearch
     })
   }, [
-    products,
+    lifecycleScopedProducts,
     catalogs,
     activeCategory,
     activeCatalog,
@@ -942,7 +1098,9 @@ export default function ProductsPage() {
   ])
 
   const displayedProductIDs = useMemo(
-    () => displayedProducts.map(product => product.ID),
+    () => displayedProducts
+      .filter(product => !product.provider_removed)
+      .map(product => product.ID),
     [displayedProducts]
   )
   const selectedItemSet = useMemo(
@@ -1248,8 +1406,27 @@ export default function ProductsPage() {
     }
   }
 
-  const totalActive = products.filter(p => p.is_active).length
-  const totalIssues = products.filter(p => !p.is_active || p.stock === 0).length
+  const totalActive = products.filter(
+    product => !product.provider_removed && product.is_active && product.stock !== 0
+  ).length
+  const totalIssues = products.filter(
+    product => !product.provider_removed && (!product.is_active || product.stock === 0)
+  ).length
+  const totalRemoved = products.filter(product => product.provider_removed).length
+  const providerLifecycleOptions: Array<{
+    id: ProviderLifecycleFilter;
+    label: string;
+    count: number;
+  }> = [
+    {
+      id: 'present',
+      label: 'Ada di Provider',
+      count: products.length - totalRemoved
+    },
+    { id: 'offline', label: 'Gangguan / Offline', count: totalIssues },
+    { id: 'removed', label: 'Dihapus Provider', count: totalRemoved },
+    { id: 'all', label: 'Semua Produk', count: products.length }
+  ]
   const activeCatalogInfo = activeCatalog === 'all'
     ? null
     : catalogs.find(catalog => catalog.cardcode === activeCatalog) ?? null
@@ -1259,6 +1436,8 @@ export default function ProductsPage() {
     setSelectedItems([])
     setBulkDialog(null)
     setEditingProduct(null)
+    setDeletingProduct(null)
+    setDeleteConfirmation('')
     setBulkFeedback(null)
     setSyncFeedback(null)
   }
@@ -1318,12 +1497,12 @@ export default function ProductsPage() {
           </div>
 
           <div className="bg-white/5 border border-white/10 rounded-3xl p-6 backdrop-blur-xl shadow-lg relative overflow-hidden group">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/10 rounded-full blur-3xl -mr-10 -mt-10 transition-all group-hover:bg-emerald-500/20"></div>
+            <div className="absolute top-0 right-0 w-32 h-32 bg-orange-500/10 rounded-full blur-3xl -mr-10 -mt-10 transition-all group-hover:bg-orange-500/20"></div>
             <div className="flex items-center gap-5 relative z-10">
-              <div className="w-14 h-14 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400"><TrendingUp size={28} /></div>
+              <div className="w-14 h-14 rounded-2xl bg-orange-500/10 border border-orange-500/20 flex items-center justify-center text-orange-300"><Trash2 size={28} /></div>
               <div>
-                <p className="text-[11px] text-white/50 uppercase font-bold tracking-widest">Avg Margin</p>
-                {loading ? <div className="h-8 w-16 bg-white/10 animate-pulse rounded mt-1"></div> : <h3 className="text-3xl font-bold font-mono mt-1 text-emerald-400">Live</h3>}
+                <p className="text-[11px] text-white/50 uppercase font-bold tracking-widest">Dihapus Provider</p>
+                {loading ? <div className="h-8 w-16 bg-white/10 animate-pulse rounded mt-1"></div> : <h3 className="text-3xl font-bold font-mono mt-1 text-orange-300">{totalRemoved}</h3>}
               </div>
             </div>
           </div>
@@ -1353,6 +1532,32 @@ export default function ProductsPage() {
         <>
           {/* TIER 1, 2, 3 (CONTROLS UNTUK TAB LIVE) */}
           <div className="flex flex-col gap-4 mb-6 relative z-20">
+            <div className="flex gap-2 overflow-x-auto custom-scrollbar pb-1">
+              {providerLifecycleOptions.map(option => {
+                const isActive = providerLifecycleFilter === option.id
+                return (
+                  <button
+                    key={option.id}
+                    type="button"
+                    onClick={() => handleProviderLifecycleFilterChange(option.id)}
+                    onPointerUp={event => event.currentTarget.blur()}
+                    className={`inline-flex min-h-10 shrink-0 items-center gap-2 rounded-xl border px-4 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0084FF]/70 ${
+                      isActive
+                        ? 'border-[#0084FF]/40 bg-[#0084FF]/15 text-sky-100'
+                        : 'border-white/10 bg-white/[0.035] text-white/45 hover:bg-white/[0.07] hover:text-white/75'
+                    }`}
+                  >
+                    <span>{option.label}</span>
+                    <span className={`rounded-full px-2 py-0.5 font-mono text-[10px] ${
+                      isActive ? 'bg-[#0084FF]/25 text-sky-100' : 'bg-black/20 text-white/35'
+                    }`}>
+                      {option.count}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+
             {/* TIER 1: CATEGORY PILLS */}
             <div className="flex gap-3 overflow-x-auto custom-scrollbar pb-2 w-full">
               {mainCategories.map((cat) => {
@@ -1661,7 +1866,10 @@ export default function ProductsPage() {
                           <td className="py-4 pl-2">
                             <Checkbox
                               isSelected={isSelected}
-                              aria-label={`${isSelected ? 'Hapus pilihan' : 'Pilih'} ${p.name}`}
+                              isDisabled={p.provider_removed}
+                              aria-label={p.provider_removed
+                                ? `${p.name} tidak tersedia untuk aksi massal karena sudah dihapus provider`
+                                : `${isSelected ? 'Hapus pilihan' : 'Pilih'} ${p.name}`}
                               onChange={() => toggleProductSelection(p.ID)}
                             />
                           </td>
@@ -1708,12 +1916,23 @@ export default function ProductsPage() {
                           <td className="px-2 text-center">
                             <div className="flex flex-col items-center gap-1">
                             <span className={`inline-flex min-h-6 items-center whitespace-nowrap rounded-full border px-2 py-0.5 text-[8px] font-bold uppercase tracking-[0.06em] ${
-                              p.is_active
-                                ? 'border-emerald-500/20 bg-emerald-500/[0.08] text-emerald-300'
-                                : 'border-red-500/20 bg-red-500/[0.08] text-red-300'
+                              p.provider_removed
+                                ? 'border-orange-400/25 bg-orange-400/[0.09] text-orange-200'
+                                : p.is_active && p.stock !== 0
+                                  ? 'border-emerald-500/20 bg-emerald-500/[0.08] text-emerald-300'
+                                  : 'border-red-500/20 bg-red-500/[0.08] text-red-300'
                             }`}>
-                              {p.is_active ? 'PROVIDER ONLINE' : 'PROVIDER OFFLINE'}
+                              {p.provider_removed
+                                ? 'DIHAPUS PROVIDER'
+                                : p.is_active && p.stock !== 0
+                                  ? 'PROVIDER ONLINE'
+                                  : 'PROVIDER OFFLINE'}
                             </span>
+                            {p.provider_removed && formatProviderDate(p.provider_removed_at) && (
+                              <span className="text-[8px] text-orange-100/45">
+                                Sejak {formatProviderDate(p.provider_removed_at)}
+                              </span>
+                            )}
                             <span className={`inline-flex min-h-6 items-center whitespace-nowrap rounded-full border px-2 py-0.5 text-[8px] font-bold uppercase tracking-[0.06em] ${
                               p.admin_enabled
                                 ? 'border-sky-500/20 bg-sky-500/[0.08] text-sky-300'
@@ -1724,14 +1943,35 @@ export default function ProductsPage() {
                             </div>
                           </td>
                           <td className="pr-2 text-right">
-                            <button
-                              type="button"
-                              onClick={() => openProductEditor(p)}
-                              aria-label={`Edit ${p.name}`}
-                              className="inline-flex h-10 w-10 items-center justify-center rounded-xl text-white/45 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0084FF]/60"
-                            >
-                              <Edit size={18} />
-                            </button>
+                            {p.provider_removed ? (() => {
+                              const eligibility = getProviderRemovalEligibility(p)
+                              const title = eligibility.eligible
+                                ? `Hapus permanen ${p.name}`
+                                : eligibility.eligibleAt
+                                  ? `Dapat dihapus ${eligibility.eligibleAt.toLocaleString('id-ID')}`
+                                  : 'Tanggal removal belum tersedia'
+                              return (
+                                <button
+                                  type="button"
+                                  disabled={!eligibility.eligible}
+                                  onClick={() => openPermanentDeleteDialog(p)}
+                                  aria-label={title}
+                                  title={title}
+                                  className="inline-flex h-10 w-10 items-center justify-center rounded-xl text-orange-300/75 transition-colors hover:bg-orange-400/10 hover:text-orange-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300/60 disabled:cursor-not-allowed disabled:opacity-30"
+                                >
+                                  <Trash2 size={18} />
+                                </button>
+                              )
+                            })() : (
+                              <button
+                                type="button"
+                                onClick={() => openProductEditor(p)}
+                                aria-label={`Edit ${p.name}`}
+                                className="inline-flex h-10 w-10 items-center justify-center rounded-xl text-white/45 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0084FF]/60"
+                              >
+                                <Edit size={18} />
+                              </button>
+                            )}
                           </td>
                         </tr>
                       )
@@ -1790,7 +2030,14 @@ export default function ProductsPage() {
                       <article key={p.ID} className={`group rounded-2xl border p-4 transition-colors ${isSelected ? 'border-[#0084FF]/25 bg-[#0084FF]/[0.045]' : 'border-white/5 bg-white/[0.025]'}`}>
                         <div className="flex items-start gap-3">
                           <div className="pt-3">
-                            <Checkbox isSelected={isSelected} aria-label={`${isSelected ? 'Hapus pilihan' : 'Pilih'} ${p.name}`} onChange={() => toggleProductSelection(p.ID)} />
+                            <Checkbox
+                              isSelected={isSelected}
+                              isDisabled={p.provider_removed}
+                              aria-label={p.provider_removed
+                                ? `${p.name} tidak tersedia untuk aksi massal karena sudah dihapus provider`
+                                : `${isSelected ? 'Hapus pilihan' : 'Pilih'} ${p.name}`}
+                              onChange={() => toggleProductSelection(p.ID)}
+                            />
                           </div>
                           <ProductTableThumbnail imageUrl={p.image_url} productName={p.name} />
                           <div className="min-w-0 flex-1">
@@ -1806,9 +2053,30 @@ export default function ProductsPage() {
                               </span>
                             </div>
                           </div>
-                          <button type="button" onClick={() => openProductEditor(p)} aria-label={`Edit ${p.name}`} className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-white/45 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0084FF]/60">
-                            <Edit size={18} />
-                          </button>
+                          {p.provider_removed ? (() => {
+                            const eligibility = getProviderRemovalEligibility(p)
+                            const title = eligibility.eligible
+                              ? `Hapus permanen ${p.name}`
+                              : eligibility.eligibleAt
+                                ? `Dapat dihapus ${eligibility.eligibleAt.toLocaleString('id-ID')}`
+                                : 'Tanggal removal belum tersedia'
+                            return (
+                              <button
+                                type="button"
+                                disabled={!eligibility.eligible}
+                                onClick={() => openPermanentDeleteDialog(p)}
+                                aria-label={title}
+                                title={title}
+                                className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-orange-300/75 transition-colors hover:bg-orange-400/10 hover:text-orange-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300/60 disabled:cursor-not-allowed disabled:opacity-30"
+                              >
+                                <Trash2 size={18} />
+                              </button>
+                            )
+                          })() : (
+                            <button type="button" onClick={() => openProductEditor(p)} aria-label={`Edit ${p.name}`} className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-white/45 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0084FF]/60">
+                              <Edit size={18} />
+                            </button>
+                          )}
                         </div>
 
                         <dl className="mt-4 grid grid-cols-2 gap-3 text-xs">
@@ -1834,7 +2102,22 @@ export default function ProductsPage() {
                           </div>
                           <div className="rounded-xl bg-black/10 p-3">
                             <dt className="text-[9px] uppercase tracking-wider text-white/35">Status</dt>
-                            <dd className={`mt-1 text-[10px] font-semibold ${p.is_active ? 'text-emerald-300' : 'text-red-300'}`}>Provider {p.is_active ? 'online' : 'offline'}</dd>
+                            <dd className={`mt-1 text-[10px] font-semibold ${
+                              p.provider_removed
+                                ? 'text-orange-200'
+                                : p.is_active && p.stock !== 0
+                                  ? 'text-emerald-300'
+                                  : 'text-red-300'
+                            }`}>
+                              {p.provider_removed
+                                ? 'Dihapus provider'
+                                : `Provider ${p.is_active && p.stock !== 0 ? 'online' : 'offline'}`}
+                            </dd>
+                            {p.provider_removed && formatProviderDate(p.provider_removed_at) && (
+                              <dd className="mt-1 text-[9px] text-orange-100/45">
+                                Sejak {formatProviderDate(p.provider_removed_at)}
+                              </dd>
+                            )}
                             <dd className={`mt-1 text-[10px] font-semibold ${p.admin_enabled ? 'text-sky-300' : 'text-amber-200'}`}>Store {p.admin_enabled ? 'aktif' : 'nonaktif'}</dd>
                           </div>
                         </dl>
@@ -2000,6 +2283,104 @@ export default function ProductsPage() {
           </form>
         </div>
       )}
+
+      {deletingProduct && (() => {
+        const eligibility = getProviderRemovalEligibility(deletingProduct)
+        const confirmationMatches =
+          deleteConfirmation.trim() === deletingProduct.code.trim()
+        return (
+          <BulkModal
+            title="Hapus Produk Permanen"
+            description="Aksi ini hanya tersedia untuk produk yang sudah hilang dari provider minimal 90 hari dan tidak memiliki histori transaksi."
+            titleId="permanent-delete-title"
+            onClose={closePermanentDeleteDialog}
+            isBusy={isDeletingProduct}
+          >
+            <form onSubmit={handlePermanentDelete} className="mt-7 space-y-5">
+              {bulkFeedback?.type === 'error' && (
+                <BulkFeedbackBanner feedback={bulkFeedback} />
+              )}
+
+              <div className="rounded-2xl border border-orange-300/20 bg-orange-300/[0.06] p-4">
+                <p className="text-sm font-semibold text-orange-100">
+                  {deletingProduct.name}
+                </p>
+                <p className="mt-1 font-mono text-xs text-orange-100/65">
+                  {deletingProduct.code}
+                </p>
+                <dl className="mt-4 grid gap-3 text-xs sm:grid-cols-2">
+                  <div>
+                    <dt className="text-white/35">Dihapus provider sejak</dt>
+                    <dd className="mt-1 text-white/70">
+                      {eligibility.removedAt
+                        ? eligibility.removedAt.toLocaleString('id-ID')
+                        : 'Belum tersedia'}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-white/35">Boleh dibersihkan pada</dt>
+                    <dd className="mt-1 text-white/70">
+                      {eligibility.eligibleAt
+                        ? eligibility.eligibleAt.toLocaleString('id-ID')
+                        : 'Belum tersedia'}
+                    </dd>
+                  </div>
+                </dl>
+              </div>
+
+              {!eligibility.eligible && (
+                <p className="rounded-2xl border border-amber-300/15 bg-amber-300/[0.055] px-4 py-3 text-xs leading-5 text-amber-100/70">
+                  {eligibility.remainingDays !== null
+                    ? `Masa retensi masih tersisa sekitar ${eligibility.remainingDays} hari.`
+                    : 'Tanggal removal belum tersedia, sehingga produk belum dapat dihapus.'}
+                </p>
+              )}
+
+              <p className="text-xs leading-5 text-white/45">
+                ID produk, mapping katalog dan kelompok, thumbnail, harga coret,
+                urutan, serta konfigurasi admin akan hilang. Jika SKU kembali,
+                sistem membuat row baru dalam keadaan Store Nonaktif.
+              </p>
+
+              <label className="block text-xs font-medium text-white/60">
+                Ketik SKU untuk konfirmasi
+                <input
+                  type="text"
+                  autoComplete="off"
+                  value={deleteConfirmation}
+                  disabled={isDeletingProduct || !eligibility.eligible}
+                  onChange={event => setDeleteConfirmation(event.target.value)}
+                  placeholder={deletingProduct.code}
+                  className="mt-2 h-12 w-full rounded-2xl border border-white/10 bg-[#0b0e16] px-4 font-mono text-sm text-white outline-none placeholder:text-white/20 focus:border-orange-300/60 disabled:cursor-not-allowed disabled:opacity-40"
+                />
+              </label>
+
+              <div className="flex justify-end gap-3">
+                <button
+                  type="button"
+                  disabled={isDeletingProduct}
+                  onClick={closePermanentDeleteDialog}
+                  className="min-h-11 rounded-full border border-white/10 px-5 text-sm text-white/55 hover:bg-white/5 disabled:opacity-40"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={
+                    isDeletingProduct ||
+                    !eligibility.eligible ||
+                    !confirmationMatches
+                  }
+                  className="inline-flex min-h-11 items-center gap-2 rounded-full border border-red-300/30 bg-red-400/15 px-6 text-sm font-semibold text-red-100 hover:bg-red-400/25 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {isDeletingProduct && <Loader2 size={16} className="animate-spin" />}
+                  Hapus Permanen
+                </button>
+              </div>
+            </form>
+          </BulkModal>
+        )
+      })()}
 
       {bulkDialog === 'edit' && (
         <BulkModal

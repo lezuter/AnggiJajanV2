@@ -80,7 +80,11 @@ export const useApi = () => {
   )
 
   const del = useCallback(
-    (endpoint: string) => fetchWithAuth(endpoint, { method: 'DELETE' }),
+    (endpoint: string, body?: unknown) =>
+      fetchWithAuth(endpoint, {
+        method: 'DELETE',
+        ...(body === undefined ? {} : { body: JSON.stringify(body) })
+      }),
     [fetchWithAuth]
   )
 

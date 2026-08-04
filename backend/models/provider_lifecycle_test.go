@@ -24,4 +24,13 @@ func TestProductProviderLifecycleSchema(t *testing.T) {
 	if !strings.Contains(lastSeen.Tag.Get("gorm"), "column:provider_last_seen_at") {
 		t.Fatalf("unexpected ProviderLastSeenAt tag: %q", lastSeen.Tag.Get("gorm"))
 	}
+	removedAt, ok := productType.FieldByName("ProviderRemovedAt")
+	if !ok {
+		t.Fatal("Product.ProviderRemovedAt field is missing")
+	}
+	for _, fragment := range []string{"column:provider_removed_at", "index"} {
+		if !strings.Contains(removedAt.Tag.Get("gorm"), fragment) {
+			t.Fatalf("ProviderRemovedAt tag missing %q: %q", fragment, removedAt.Tag.Get("gorm"))
+		}
+	}
 }

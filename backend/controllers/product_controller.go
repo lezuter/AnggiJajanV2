@@ -42,17 +42,64 @@ type apiGamesProductSnapshot struct {
 }
 
 // 1. GET ALL PRODUCTS
+const providerRemovalRetention = 90 * 24 * time.Hour
+
 var (
-	errProviderProductStillPresent = errors.New("produk masih tercatat di provider")
-	errProviderProductHasHistory   = errors.New("produk memiliki riwayat transaksi")
+	errProviderProductStillPresent       = errors.New("produk masih tercatat di provider")
+	errProviderRemovalDateMissing        = errors.New("tanggal produk dihapus provider belum tersedia")
+	errProviderRemovalRetentionActive    = errors.New("masa retensi produk provider belum selesai")
+	errProviderProductHasHistory         = errors.New("produk memiliki riwayat transaksi")
+	errProviderDeleteConfirmationInvalid = errors.New("konfirmasi SKU tidak cocok")
 )
 
-func validateProviderProductPermanentDelete(providerRemoved bool, transactionCount int64) error {
-	if !providerRemoved {
+type providerRemovalRetentionError struct {
+	RemovedAt     time.Time
+	EligibleAt    time.Time
+	RemainingDays int
+}
+
+func (retentionError *providerRemovalRetentionError) Error() string {
+	return errProviderRemovalRetentionActive.Error()
+}
+
+func (retentionError *providerRemovalRetentionError) Is(target error) bool {
+	return target == errProviderRemovalRetentionActive
+}
+
+type providerPermanentDeleteRequest struct {
+	ConfirmationCode string `json:"confirmation_code"`
+}
+
+func validateProviderProductPermanentDelete(
+	product models.Product,
+	transactionCount int64,
+	confirmationCode string,
+	now time.Time,
+) error {
+	if !product.ProviderRemoved {
 		return errProviderProductStillPresent
+	}
+	if product.ProviderRemovedAt == nil {
+		return errProviderRemovalDateMissing
+	}
+	if strings.TrimSpace(confirmationCode) != strings.TrimSpace(product.Code) {
+		return errProviderDeleteConfirmationInvalid
 	}
 	if transactionCount > 0 {
 		return errProviderProductHasHistory
+	}
+
+	removedAt := product.ProviderRemovedAt.UTC()
+	eligibleAt := removedAt.Add(providerRemovalRetention)
+	now = now.UTC()
+	if now.Before(eligibleAt) {
+		remaining := eligibleAt.Sub(now)
+		remainingDays := int((remaining + 24*time.Hour - 1) / (24 * time.Hour))
+		return &providerRemovalRetentionError{
+			RemovedAt:     removedAt,
+			EligibleAt:    eligibleAt,
+			RemainingDays: remainingDays,
+		}
 	}
 	return nil
 }
@@ -61,6 +108,14 @@ func DeleteProviderRemovedProduct(c *fiber.Ctx) error {
 	productID, err := c.ParamsInt("id")
 	if err != nil || productID <= 0 {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "ID produk tidak valid."})
+	}
+
+	var request providerPermanentDeleteRequest
+	if err := c.BodyParser(&request); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Body konfirmasi hapus tidak valid."})
+	}
+	if strings.TrimSpace(request.ConfirmationCode) == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "confirmation_code wajib diisi dengan SKU produk."})
 	}
 
 	err = database.DB.Transaction(func(tx *gorm.DB) error {
@@ -73,7 +128,12 @@ func DeleteProviderRemovedProduct(c *fiber.Ctx) error {
 		if err := tx.Model(&models.Transaction{}).Where("product_id = ?", product.ID).Count(&transactionCount).Error; err != nil {
 			return err
 		}
-		if err := validateProviderProductPermanentDelete(product.ProviderRemoved, transactionCount); err != nil {
+		if err := validateProviderProductPermanentDelete(
+			product,
+			transactionCount,
+			request.ConfirmationCode,
+			time.Now().UTC(),
+		); err != nil {
 			return err
 		}
 
@@ -87,11 +147,23 @@ func DeleteProviderRemovedProduct(c *fiber.Ctx) error {
 		return nil
 	})
 
+	var retentionError *providerRemovalRetentionError
 	switch {
 	case errors.Is(err, gorm.ErrRecordNotFound):
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Produk tidak ditemukan."})
+	case errors.Is(err, errProviderDeleteConfirmationInvalid):
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Konfirmasi SKU tidak cocok."})
 	case errors.Is(err, errProviderProductStillPresent):
 		return c.Status(fiber.StatusConflict).JSON(fiber.Map{"error": "Produk masih tercatat di provider dan tidak dapat dihapus permanen."})
+	case errors.Is(err, errProviderRemovalDateMissing):
+		return c.Status(fiber.StatusConflict).JSON(fiber.Map{"error": "Tanggal produk dihapus provider belum tersedia."})
+	case errors.As(err, &retentionError):
+		return c.Status(fiber.StatusConflict).JSON(fiber.Map{
+			"error":               "Produk belum melewati masa retensi 90 hari.",
+			"provider_removed_at": retentionError.RemovedAt.Format(time.RFC3339),
+			"eligible_at":         retentionError.EligibleAt.Format(time.RFC3339),
+			"remaining_days":      retentionError.RemainingDays,
+		})
 	case errors.Is(err, errProviderProductHasHistory):
 		return c.Status(fiber.StatusConflict).JSON(fiber.Map{"error": "Produk memiliki riwayat transaksi dan tidak dapat dihapus permanen."})
 	case err != nil:
@@ -347,6 +419,7 @@ func planDigiflazzProduct(
 				"provider":              "digiflazz",
 				"provider_removed":      false,
 				"provider_last_seen_at": providerLastSeenAt,
+				"provider_removed_at":   nil,
 			},
 		}
 	}
@@ -372,9 +445,11 @@ func planDigiflazzProduct(
 			Price:              snapshot.Price,
 			Stock:              snapshot.Stock,
 			IsActive:           snapshot.IsActive,
+			AdminEnabled:       false,
 			Provider:           "digiflazz",
 			ProviderRemoved:    false,
 			ProviderLastSeenAt: &providerLastSeenAt,
+			ProviderRemovedAt:  nil,
 			CatalogCardCode:    snapshot.CatalogCardCode,
 		},
 	}
@@ -503,6 +578,23 @@ func missingDigiflazzProductUpdates() map[string]interface{} {
 	}
 }
 
+func missingDigiflazzProductsScope(db *gorm.DB, normalizedSKUs []string) *gorm.DB {
+	return db.Model(&models.Product{}).
+		Where("LOWER(BTRIM(provider)) = ?", "digiflazz").
+		Where("UPPER(COALESCE(name, '')) NOT LIKE ?", "%TEST%").
+		Where("UPPER(COALESCE(code, '')) NOT LIKE ?", "%TEST%").
+		Where("LOWER(BTRIM(code)) NOT IN ?", normalizedSKUs)
+}
+
+func protectedDigiflazzTestProductUpdates() map[string]interface{} {
+	return map[string]interface{}{
+		"is_active":           true,
+		"stock":               -1,
+		"provider_removed":    false,
+		"provider_removed_at": nil,
+	}
+}
+
 func syncDigiflazzSnapshot(
 	db *gorm.DB,
 	products []digiflazzPriceListProduct,
@@ -566,12 +658,17 @@ func syncDigiflazzSnapshot(
 		}
 
 		// Hanya SKU yang benar-benar tidak ada di snapshot valid yang ditandai
-		// removed. Produk yang hadir namun offline akan diperbarui di loop bawah.
-		missingResult := tx.Model(&models.Product{}).
-			Where("LOWER(BTRIM(provider)) = ?", "digiflazz").
-			Where("UPPER(COALESCE(name, '')) NOT LIKE ?", "%TEST%").
-			Where("UPPER(COALESCE(code, '')) NOT LIKE ?", "%TEST%").
-			Where("LOWER(BTRIM(code)) NOT IN ?", normalizedSKUs).
+		// removed. Timestamp removal hanya diisi pertama kali agar retensi stabil
+		// dan tidak dimulai ulang oleh sync berikutnya.
+		providerRemovedAt := time.Now().UTC()
+		removedAtResult := missingDigiflazzProductsScope(tx, normalizedSKUs).
+			Where("(provider_removed = FALSE OR provider_removed_at IS NULL)").
+			Update("provider_removed_at", providerRemovedAt)
+		if removedAtResult.Error != nil {
+			return removedAtResult.Error
+		}
+
+		missingResult := missingDigiflazzProductsScope(tx, normalizedSKUs).
 			Updates(missingDigiflazzProductUpdates())
 		if missingResult.Error != nil {
 			return missingResult.Error
@@ -581,11 +678,7 @@ func syncDigiflazzSnapshot(
 		if err := tx.Model(&models.Product{}).
 			Where("LOWER(BTRIM(provider)) = ?", "digiflazz").
 			Where("(UPPER(COALESCE(name, '')) LIKE ? OR UPPER(COALESCE(code, '')) LIKE ?)", "%TEST%", "%TEST%").
-			Updates(map[string]interface{}{
-				"is_active":        true,
-				"stock":            -1,
-				"provider_removed": false,
-			}).Error; err != nil {
+			Updates(protectedDigiflazzTestProductUpdates()).Error; err != nil {
 			return err
 		}
 
@@ -640,6 +733,11 @@ func syncDigiflazzSnapshot(
 					return fmt.Errorf("Digiflazz create plan tidak valid untuk SKU %s", snapshot.SKU)
 				}
 				if err := tx.Create(plan.Create).Error; err != nil {
+					return err
+				}
+				// Product.AdminEnabled memiliki default database true. Paksa false
+				// sesudah INSERT di transaction yang sama agar SKU baru wajib direview.
+				if err := tx.Model(plan.Create).UpdateColumn("admin_enabled", false).Error; err != nil {
 					return err
 				}
 			case digiflazzSyncUpdate:
