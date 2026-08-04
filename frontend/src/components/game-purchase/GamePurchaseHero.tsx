@@ -24,11 +24,11 @@ function HeroBannerArtwork ({ bannerUrl }: { bannerUrl: string }) {
     <div
       aria-hidden='true'
       className='
-        pointer-events-none absolute inset-x-0 top-12 z-0
+        pointer-events-none absolute -top-10 inset-x-0 z-0
         w-full aspect-[1920/550]
         overflow-hidden
-        [mask-image:linear-gradient(to_right,transparent_0%,black_12%,black_88%,transparent_100%)]
-        [-webkit-mask-image:linear-gradient(to_right,transparent_0%,black_12%,black_88%,transparent_100%)]
+        [mask-image:linear-gradient(to_right,transparent_0%,black_8%,black_92%,transparent_100%)]
+        [-webkit-mask-image:linear-gradient(to_right,transparent_0%,black_8%,black_92%,transparent_100%)]
       '
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -38,7 +38,7 @@ function HeroBannerArtwork ({ bannerUrl }: { bannerUrl: string }) {
         loading='eager'
         decoding='async'
         onError={() => setHasFailed(true)}
-        className='h-full w-full object-contain object-center opacity-100'
+        className='h-full w-full object-cover object-center opacity-100'
       />
     </div>
   )
@@ -48,7 +48,7 @@ function HeroCharacterVideo ({ videoUrl }: { videoUrl: string }) {
   return (
     <div
       aria-hidden='true'
-      className='pointer-events-none absolute inset-x-0 top-12 z-20 hidden aspect-[1920/550] drop-shadow-[0_12px_30px_rgba(99,0,255,0.35)] md:block'
+      className='pointer-events-none absolute -top-10 inset-x-0 z-20 hidden aspect-[1920/550] drop-shadow-[0_12px_30px_rgba(99,0,255,0.35)] md:block'
     >
       <video
         autoPlay
@@ -90,7 +90,7 @@ export default function GamePurchaseHero ({
         />
       )}
 
-      <div className='relative z-[2] grid min-w-0 grid-cols-[104px_minmax(0,1fr)] items-end gap-x-5 gap-y-7 sm:grid-cols-[116px_minmax(0,1fr)] sm:gap-x-7 md:grid-cols-12 md:gap-x-6 lg:gap-x-8'>
+      <div className='relative z-[2] mt-[76px] grid min-w-0 grid-cols-[104px_minmax(0,1fr)] items-end gap-x-5 gap-y-7 sm:mt-20 sm:grid-cols-[116px_minmax(0,1fr)] sm:gap-x-7 md:grid-cols-12 md:gap-x-6 lg:mt-[88px] lg:gap-x-8'>
         <GlareCard className='col-start-1 row-start-1 aspect-[4/5] w-[104px] sm:w-[116px] md:col-span-2 md:w-[188px] md:justify-self-end md:self-start'>
           {imageUrl ? (
             // eslint-disable-next-line @next/next/no-img-element

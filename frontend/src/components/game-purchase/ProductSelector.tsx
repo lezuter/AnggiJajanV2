@@ -160,9 +160,13 @@ function ProductOption ({
         {productName}
       </p>
 
-      <div className='mt-auto flex flex-col pt-3.5'>
+      <div className='mt-3.5 flex min-h-[52px] flex-col items-center'>
+        <p className='tabular-nums text-base font-semibold tracking-[-0.02em] text-[var(--aj-accent)]'>
+          {formatPrice(finalPrice)}
+        </p>
+
         {hasDiscount && (
-          <div className='flex flex-wrap items-center justify-center gap-x-1.5 gap-y-1'>
+          <div className='mt-2 flex flex-wrap items-center justify-center gap-x-1.5 gap-y-1'>
             <span className='whitespace-nowrap tabular-nums text-[11px] leading-none text-white/[0.34] line-through'>
               {formatPrice(originalPrice)}
             </span>
@@ -172,14 +176,6 @@ function ProductOption ({
             </span>
           </div>
         )}
-
-        <p
-          className={`tabular-nums text-base font-semibold tracking-[-0.02em] text-[var(--aj-accent)] ${
-            hasDiscount ? 'mt-2' : ''
-          }`}
-        >
-          {formatPrice(finalPrice)}
-        </p>
       </div>
     </button>
   )
@@ -205,6 +201,7 @@ export default function ProductSelector ({
     selectedSectionKey ?? visibleSections[0]?.key ?? ''
   )
   const sectionRefs = useRef<Record<string, HTMLElement | null>>({})
+  const tabListRef = useRef<HTMLDivElement>(null)
   const tabRefs = useRef<Record<string, HTMLAnchorElement | null>>({})
   const resolvedActiveSectionKey = visibleSections.some(
     section => section.key === activeSectionKey
@@ -263,10 +260,24 @@ export default function ProductSelector ({
   }, [visibleSections])
 
   useEffect(() => {
-    tabRefs.current[resolvedActiveSectionKey]?.scrollIntoView({
-      behavior: 'smooth',
-      block: 'nearest',
-      inline: 'center'
+    const tabList = tabListRef.current
+    const activeTab = tabRefs.current[resolvedActiveSectionKey]
+
+    if (!tabList || !activeTab) return
+
+    const tabListBounds = tabList.getBoundingClientRect()
+    const activeTabBounds = activeTab.getBoundingClientRect()
+    const centeredScrollLeft =
+      tabList.scrollLeft +
+      activeTabBounds.left -
+      tabListBounds.left -
+      (tabListBounds.width - activeTabBounds.width) / 2
+
+    tabList.scrollTo({
+      left: Math.max(0, centeredScrollLeft),
+      behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches
+        ? 'auto'
+        : 'smooth'
     })
   }, [resolvedActiveSectionKey])
 
@@ -318,7 +329,10 @@ export default function ProductSelector ({
               aria-label='Navigasi kelompok produk'
               className='sticky top-[92px] z-20 -mx-2 mt-5 rounded-[22px] border border-white/[0.08] bg-black/[0.035] px-2 py-2.5 shadow-[0_18px_55px_rgba(0,0,0,0.18)] backdrop-blur-md backdrop-saturate-150 sm:top-[96px] lg:top-[180px]'
             >
-              <div className='flex gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden'>
+              <div
+                ref={tabListRef}
+                className='flex gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden'
+              >
                 {visibleSections.map(section => {
                   const isActive = section.key === resolvedActiveSectionKey
                   const sectionId = `product-section-${section.key}`

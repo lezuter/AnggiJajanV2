@@ -1090,6 +1090,7 @@ func Checkout(c *fiber.Ctx) error {
 
 	var product models.Product
 	if err := database.DB.
+		Preload("Catalog").
 		Preload("ProductGroup").
 		First(&product, req.ProductID).Error; err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{

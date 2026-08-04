@@ -21,7 +21,34 @@ interface Catalog {
   is_public: boolean;
   is_popular: boolean;
   sort_order: number;
+  markup_percent?: number | null;
 }
+
+const markupNumberFormatter = new Intl.NumberFormat("id-ID", {
+  maximumFractionDigits: 10,
+});
+
+const parseMarkupPercentInput = (rawValue: string): number | null | undefined => {
+  const normalizedValue = rawValue.trim().replace(",", ".");
+  if (normalizedValue === "") return null;
+
+  const value = Number(normalizedValue);
+  if (!Number.isFinite(value) || value < 0 || value > 100) return undefined;
+  return value;
+};
+
+const formatMarkupPercent = (value: number) => markupNumberFormatter.format(value);
+
+const readResponseError = async (response: Response, fallback: string) => {
+  try {
+    const payload = (await response.json()) as { error?: unknown };
+    return typeof payload.error === "string" && payload.error.trim()
+      ? payload.error
+      : fallback;
+  } catch {
+    return fallback;
+  }
+};
 
 // ✨ PREMIUM GLASSMORPHISM CARD (Biar seragam sama Dashboard) ✨
 const CardBase = ({
@@ -69,6 +96,7 @@ export default function AdminCatalogPage() {
     is_public: true,
     is_popular: false,
     sort_order: 0,
+    markup_percent: "",
   });
 
   const fetchCatalogs = useCallback(async () => {
@@ -114,6 +142,7 @@ export default function AdminCatalogPage() {
       is_public: true,
       is_popular: false,
       sort_order: 0,
+      markup_percent: "",
     });
     setIsModalOpen(true);
   };
@@ -137,25 +166,39 @@ export default function AdminCatalogPage() {
       is_public: cat.is_public ?? true,
       is_popular: cat.is_popular ?? false,
       sort_order: cat.sort_order ?? 0,
+      markup_percent:
+        cat.markup_percent === null || cat.markup_percent === undefined
+          ? ""
+          : String(cat.markup_percent),
     });
     setIsModalOpen(true);
   };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+    const markupPercent = parseMarkupPercentInput(formData.markup_percent);
+    if (markupPercent === undefined) {
+      alert("Markup harus berupa angka 0 sampai 100.");
+      return;
+    }
+
     const endpoint = isEditing
       ? `/admin/catalogs/${currentCardCode}`
       : "/admin/catalogs";
+    const payload = {
+      ...formData,
+      markup_percent: markupPercent,
+    };
 
     try {
       const res = await (isEditing
-        ? put(endpoint, formData)
-        : post(endpoint, formData));
+        ? put(endpoint, payload)
+        : post(endpoint, payload));
       if (res.ok) {
         setIsModalOpen(false);
         fetchCatalogs();
       } else {
-        alert("Gagal menyimpan data.");
+        alert(await readResponseError(res, "Gagal menyimpan data."));
       }
     } catch (error) {
       console.error(error);
@@ -172,6 +215,7 @@ export default function AdminCatalogPage() {
       const res = await put(`/admin/catalogs/${cat.cardcode}`, {
         ...cat,
         is_active: newStatus,
+        markup_percent: cat.markup_percent ?? null,
       });
       if (res.ok) fetchCatalogs();
     } catch (error) {
@@ -225,6 +269,9 @@ export default function AdminCatalogPage() {
                   <th className="pb-4 px-2 text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] border-b border-white/[0.05]">
                     Check ID
                   </th>
+                  <th className="pb-4 px-2 text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] border-b border-white/[0.05]">
+                    Markup
+                  </th>
                   <th className="pb-4 px-2 text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] border-b border-white/[0.05] text-center">
                     Status
                   </th>
@@ -237,7 +284,7 @@ export default function AdminCatalogPage() {
                 {currentItems.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={5}
+                      colSpan={6}
                       className="py-12 text-center text-slate-500/50 italic tracking-widest font-mono text-xs"
                     >
                       Data katalog masih kosong...
@@ -283,6 +330,16 @@ export default function AdminCatalogPage() {
                         ) : (
                           <span className="text-slate-600 font-bold">-</span>
                         )}
+                      </td>
+
+                      {/* MARKUP */}
+                      <td className="py-4 px-2">
+                        <span className="inline-flex rounded-full border border-purple-400/15 bg-purple-400/[0.055] px-2.5 py-1 text-[10px] font-medium text-purple-100/70">
+                          {typeof cat.markup_percent === "number" &&
+                          Number.isFinite(cat.markup_percent)
+                            ? `${formatMarkupPercent(cat.markup_percent)}% · Khusus`
+                            : "5% · Default"}
+                        </span>
                       </td>
 
                       {/* STATUS */}
@@ -551,6 +608,36 @@ export default function AdminCatalogPage() {
                   />
                   <p className="mt-1.5 text-[9px] font-mono text-purple-300/40">
                     Angka lebih kecil tampil lebih dulu. Contoh: 0, 1, 2.
+                  </p>
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="catalog-markup-percent"
+                    className="text-[10px] font-bold text-purple-300/70 uppercase tracking-widest mb-1 block"
+                  >
+                    Markup keuntungan (%)
+                  </label>
+                  <input
+                    id="catalog-markup-percent"
+                    type="text"
+                    inputMode="decimal"
+                    value={formData.markup_percent}
+                    aria-describedby="catalog-markup-percent-helper"
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        markup_percent: e.target.value,
+                      })
+                    }
+                    className="w-full bg-white/[0.02] border border-white/[0.05] rounded-xl p-3 text-white focus:border-purple-500/50 outline-none font-mono text-sm transition-colors"
+                    placeholder="5 atau 2,5"
+                  />
+                  <p
+                    id="catalog-markup-percent-helper"
+                    className="mt-1.5 text-[9px] font-mono text-purple-300/40"
+                  >
+                    Kosongkan untuk memakai markup global 5%.
                   </p>
                 </div>
 

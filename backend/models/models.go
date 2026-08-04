@@ -20,15 +20,16 @@ type User struct {
 
 // Model Catalog (Card Game/Brand)
 type Catalog struct {
-	CardCode    string `gorm:"primaryKey;size:20" json:"cardcode"`
-	Name        string `json:"name"`
-	Slug        string `gorm:"uniqueIndex" json:"slug"`
-	ShortName   string `json:"short_name"`
-	Description string `json:"description"`
-	ImageURL    string `json:"image_url"`
-	BannerURL   string `json:"banner_url"`
-	Publisher   string `json:"publisher"`
-	Region      string `json:"region"`
+	CardCode      string   `gorm:"primaryKey;size:20" json:"cardcode"`
+	Name          string   `json:"name"`
+	Slug          string   `gorm:"uniqueIndex" json:"slug"`
+	ShortName     string   `json:"short_name"`
+	Description   string   `json:"description"`
+	ImageURL      string   `json:"image_url"`
+	BannerURL     string   `json:"banner_url"`
+	Publisher     string   `json:"publisher"`
+	Region        string   `json:"region"`
+	MarkupPercent *float64 `json:"markup_percent" gorm:"column:markup_percent"`
 
 	Category  string `gorm:"index" json:"category"`
 	IsPopular bool   `gorm:"default:false;index" json:"is_popular"`
@@ -54,6 +55,7 @@ type ProductGroup struct {
 	Catalog         Catalog   `json:"-" gorm:"foreignKey:CatalogCardCode;references:CardCode;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
 	SortOrder       int       `json:"sort_order" gorm:"not null;default:0;index;check:chk_product_group_sort_order_nonnegative,sort_order >= 0"`
 	IsActive        bool      `json:"is_active" gorm:"not null;default:true;index"`
+	MarkupPercent   *float64  `json:"markup_percent" gorm:"column:markup_percent"`
 	Products        []Product `json:"products" gorm:"foreignKey:ProductGroupID;constraint:OnUpdate:CASCADE,OnDelete:SET NULL;"`
 }
 
@@ -80,30 +82,75 @@ type Product struct {
 	Provider        string        `json:"provider" gorm:"default:'digiflazz';index"`
 }
 
+// ProviderSyncState persists provider coordination metadata so cooldowns
+// survive application restarts. Running is reset during backend startup.
+type ProviderSyncState struct {
+	Provider       string     `json:"provider" gorm:"primaryKey;size:40"`
+	Running        bool       `json:"running" gorm:"not null;default:false"`
+	Source         string     `json:"source" gorm:"size:20;not null;default:''"`
+	LastStartedAt  *time.Time `json:"last_started_at"`
+	LastFinishedAt *time.Time `json:"last_finished_at"`
+	LastSuccessAt  *time.Time `json:"last_success_at"`
+	LastError      string     `json:"last_error,omitempty" gorm:"type:text"`
+	CooldownUntil  *time.Time `json:"cooldown_until"`
+}
+
 const StorefrontMarkupRate = 0.05
+
+// ResolveStorefrontMarkupRate resolves human-readable percentage overrides to
+// a decimal rate. Invalid persisted values fall through to the next level.
+func ResolveStorefrontMarkupRate(catalogMarkup, groupMarkup *float64) float64 {
+	if isValidStorefrontMarkupPercent(groupMarkup) {
+		return *groupMarkup / 100
+	}
+	if isValidStorefrontMarkupPercent(catalogMarkup) {
+		return *catalogMarkup / 100
+	}
+	return StorefrontMarkupRate
+}
+
+func isValidStorefrontMarkupPercent(markup *float64) bool {
+	return markup != nil &&
+		!math.IsNaN(*markup) &&
+		!math.IsInf(*markup, 0) &&
+		*markup >= 0 &&
+		*markup <= 100
+}
+
+// CalculateSellingPriceWithMarkup calculates a non-persisted selling price
+// from rounded provider capital and an already-resolved decimal markup rate.
+func CalculateSellingPriceWithMarkup(capital, effectiveMarkupRate float64) float64 {
+	roundedCapital := math.Round(capital)
+	return math.Round(roundedCapital * (1 + effectiveMarkupRate))
+}
 
 // CalculateSellingPrice is the single source of truth for the internal target
 // net. Price remains provider capital and SellingPrice is never persisted.
 func CalculateSellingPrice(capital float64) float64 {
-	roundedCapital := math.Round(capital)
-	return math.Round(roundedCapital * (1 + StorefrontMarkupRate))
+	return CalculateSellingPriceWithMarkup(capital, StorefrontMarkupRate)
 }
 
-// AfterFind exposes both the internal target and the QRIS-inclusive public
-// starting price without adding a persisted Product column or a network call.
-func (product *Product) AfterFind(_ *gorm.DB) error {
-	product.SellingPrice = CalculateSellingPrice(product.Price)
+// ApplyStorefrontPricing exposes hierarchy-aware, non-persisted public pricing.
+func (product *Product) ApplyStorefrontPricing(catalogMarkup, groupMarkup *float64) {
+	effectiveMarkupRate := ResolveStorefrontMarkupRate(catalogMarkup, groupMarkup)
+	product.SellingPrice = CalculateSellingPriceWithMarkup(product.Price, effectiveMarkupRate)
 	product.StartingMethod = "QRIS"
 
 	config, err := payments.LoadMidtransConfig()
 	if err != nil {
 		product.StartingPrice = product.SellingPrice
-		return nil
+		return
 	}
 	product.StartingPrice, err = config.StartingPrice(product.SellingPrice)
 	if err != nil {
 		product.StartingPrice = product.SellingPrice
 	}
+}
+
+// AfterFind exposes both the internal target and the QRIS-inclusive public
+// starting price without adding a persisted Product column or a network call.
+func (product *Product) AfterFind(_ *gorm.DB) error {
+	product.ApplyStorefrontPricing(nil, nil)
 	return nil
 }
 

@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
@@ -30,15 +31,17 @@ var (
 )
 
 type createProductGroupInput struct {
-	Name      string `json:"name"`
-	SortOrder *int   `json:"sort_order"`
-	IsActive  *bool  `json:"is_active"`
+	Name          string          `json:"name"`
+	SortOrder     *int            `json:"sort_order"`
+	IsActive      *bool           `json:"is_active"`
+	MarkupPercent json.RawMessage `json:"markup_percent"`
 }
 
 type updateProductGroupInput struct {
-	Name      *string `json:"name"`
-	SortOrder *int    `json:"sort_order"`
-	IsActive  *bool   `json:"is_active"`
+	Name          *string         `json:"name"`
+	SortOrder     *int            `json:"sort_order"`
+	IsActive      *bool           `json:"is_active"`
+	MarkupPercent json.RawMessage `json:"markup_percent"`
 }
 
 type productGroupProductsInput struct {
@@ -159,6 +162,10 @@ func CreateProductGroup(c *fiber.Ctx) error {
 			"error": "Payload kelompok produk tidak valid: " + err.Error(),
 		})
 	}
+	markupPercent, _, err := parseNullableMarkupPercent(input.MarkupPercent)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+	}
 
 	name, err := normalizeProductGroupName(input.Name)
 	if err != nil {
@@ -181,6 +188,7 @@ func CreateProductGroup(c *fiber.Ctx) error {
 		CatalogCardCode: catalogCardCode,
 		SortOrder:       sortOrder,
 		IsActive:        isActive,
+		MarkupPercent:   markupPercent,
 	}
 
 	err = database.DB.Transaction(func(tx *gorm.DB) error {
@@ -238,13 +246,17 @@ func UpdateProductGroup(c *fiber.Ctx) error {
 			"error": "Payload kelompok produk tidak valid: " + err.Error(),
 		})
 	}
-	if input.Name == nil && input.SortOrder == nil && input.IsActive == nil {
+	markupPercent, markupPresent, err := parseNullableMarkupPercent(input.MarkupPercent)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+	}
+	if input.Name == nil && input.SortOrder == nil && input.IsActive == nil && !markupPresent {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "Tidak ada perubahan yang diizinkan",
 		})
 	}
 
-	updates := make(map[string]interface{}, 3)
+	updates := make(map[string]interface{}, 4)
 	if input.Name != nil {
 		name, err := normalizeProductGroupName(*input.Name)
 		if err != nil {
@@ -260,6 +272,9 @@ func UpdateProductGroup(c *fiber.Ctx) error {
 	}
 	if input.IsActive != nil {
 		updates["is_active"] = *input.IsActive
+	}
+	if markupPresent {
+		updates["markup_percent"] = markupPercent
 	}
 
 	var productGroup models.ProductGroup
@@ -300,6 +315,9 @@ func UpdateProductGroup(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Gagal memperbarui kelompok produk",
 		})
+	}
+	if markupPresent {
+		productGroup.MarkupPercent = markupPercent
 	}
 
 	return c.JSON(productGroup)

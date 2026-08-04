@@ -20,6 +20,7 @@ export interface ProductGroup {
   catalog_cardcode: string
   sort_order: number
   is_active: boolean
+  markup_percent?: number | null
   product_count?: number
   products?: Array<{ ID: number }>
 }
@@ -28,6 +29,7 @@ export interface ProductGroupInput {
   name: string
   sort_order: number
   is_active: boolean
+  markup_percent: number | null
 }
 
 export type ProductGroupFilter = 'all' | 'ungrouped' | number
@@ -36,6 +38,7 @@ interface ProductGroupManagerProps {
   catalog: {
     cardcode: string
     name: string
+    markup_percent?: number | null
   }
   groups: ProductGroup[]
   loading: boolean
@@ -55,20 +58,63 @@ interface ProductGroupManagerProps {
 const getErrorMessage = (error: unknown, fallback: string) =>
   error instanceof Error && error.message ? error.message : fallback
 
+const markupNumberFormatter = new Intl.NumberFormat('id-ID', {
+  maximumFractionDigits: 10
+})
+
+const parseMarkupPercentInput = (
+  rawValue: string
+): number | null | undefined => {
+  const normalizedValue = rawValue.trim().replace(',', '.')
+  if (normalizedValue === '') return null
+
+  const value = Number(normalizedValue)
+  if (!Number.isFinite(value) || value < 0 || value > 100) return undefined
+  return value
+}
+
+const formatMarkupPercent = (value: number) =>
+  markupNumberFormatter.format(value)
+
+const validMarkupPercent = (
+  value: number | null | undefined
+): value is number =>
+  typeof value === 'number' &&
+  Number.isFinite(value) &&
+  value >= 0 &&
+  value <= 100
+
+const productGroupMarkupLabel = (
+  groupMarkup: number | null | undefined,
+  catalogMarkup: number | null | undefined
+) => {
+  if (validMarkupPercent(groupMarkup)) {
+    return `Markup ${formatMarkupPercent(groupMarkup)}% · Khusus`
+  }
+  if (validMarkupPercent(catalogMarkup)) {
+    return `Markup ${formatMarkupPercent(catalogMarkup)}% · Ikut Catalog`
+  }
+  return 'Markup 5% · Global'
+}
+
 const validateGroupInput = (
   name: string,
-  rawSortOrder: string
+  rawSortOrder: string,
+  rawMarkupPercent: string
 ): ProductGroupInput | null => {
   const normalizedName = name.trim()
   const sortOrder = Number(rawSortOrder)
+  const markupPercent = parseMarkupPercentInput(rawMarkupPercent)
 
   if (!normalizedName) return null
   if (!Number.isInteger(sortOrder) || sortOrder < 0) return null
+  if (markupPercent === undefined) return null
 
   return {
     name: normalizedName,
     sort_order: sortOrder,
-    is_active: true
+    is_active: true,
+    markup_percent: markupPercent
   }
 }
 
@@ -90,10 +136,12 @@ export default function ProductGroupManager({
 }: ProductGroupManagerProps) {
   const [createName, setCreateName] = useState('')
   const [createSortOrder, setCreateSortOrder] = useState('0')
+  const [createMarkupPercent, setCreateMarkupPercent] = useState('')
   const [createIsActive, setCreateIsActive] = useState(true)
   const [editingGroupID, setEditingGroupID] = useState<number | null>(null)
   const [editName, setEditName] = useState('')
   const [editSortOrder, setEditSortOrder] = useState('0')
+  const [editMarkupPercent, setEditMarkupPercent] = useState('')
   const [editIsActive, setEditIsActive] = useState(true)
   const [feedback, setFeedback] = useState<{
     type: 'error' | 'success'
@@ -103,11 +151,15 @@ export default function ProductGroupManager({
   const handleCreate = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
 
-    const input = validateGroupInput(createName, createSortOrder)
+    const input = validateGroupInput(
+      createName,
+      createSortOrder,
+      createMarkupPercent
+    )
     if (!input) {
       setFeedback({
         type: 'error',
-        message: 'Nama kelompok wajib diisi dan urutan harus berupa bilangan bulat nol atau lebih.'
+        message: 'Nama kelompok wajib diisi, urutan harus berupa bilangan bulat nol atau lebih, dan markup harus kosong atau angka 0 sampai 100.'
       })
       return
     }
@@ -117,6 +169,7 @@ export default function ProductGroupManager({
       await onCreate({ ...input, is_active: createIsActive })
       setCreateName('')
       setCreateSortOrder('0')
+      setCreateMarkupPercent('')
       setCreateIsActive(true)
       setFeedback({
         type: 'success',
@@ -134,6 +187,11 @@ export default function ProductGroupManager({
     setEditingGroupID(group.ID)
     setEditName(group.name)
     setEditSortOrder(String(group.sort_order))
+    setEditMarkupPercent(
+      group.markup_percent === null || group.markup_percent === undefined
+        ? ''
+        : String(group.markup_percent)
+    )
     setEditIsActive(group.is_active)
     setFeedback(null)
   }
@@ -149,11 +207,15 @@ export default function ProductGroupManager({
   ) => {
     event.preventDefault()
 
-    const input = validateGroupInput(editName, editSortOrder)
+    const input = validateGroupInput(
+      editName,
+      editSortOrder,
+      editMarkupPercent
+    )
     if (!input) {
       setFeedback({
         type: 'error',
-        message: 'Nama kelompok wajib diisi dan urutan harus berupa bilangan bulat nol atau lebih.'
+        message: 'Nama kelompok wajib diisi, urutan harus berupa bilangan bulat nol atau lebih, dan markup harus kosong atau angka 0 sampai 100.'
       })
       return
     }
@@ -212,6 +274,10 @@ export default function ProductGroupManager({
     }
   }
 
+  const catalogMarkupHelper = validMarkupPercent(catalog.markup_percent)
+    ? `Kosong = ikut markup Catalog ${formatMarkupPercent(catalog.markup_percent)}%.`
+    : 'Kosong = ikut markup global 5%.'
+
   return (
     <section
       aria-labelledby="product-group-manager-title"
@@ -264,7 +330,7 @@ export default function ProductGroupManager({
 
       <form
         onSubmit={handleCreate}
-        className="mt-5 grid gap-3 rounded-2xl border border-white/[0.07] bg-black/15 p-4 md:grid-cols-[minmax(0,1fr)_110px_auto_auto] md:items-end"
+        className="mt-5 grid gap-3 rounded-2xl border border-white/[0.07] bg-black/15 p-4 md:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_110px_minmax(190px,0.75fr)_auto_auto] lg:items-end"
       >
         <label className="block text-[11px] font-medium text-white/55">
           Nama kelompok
@@ -290,6 +356,30 @@ export default function ProductGroupManager({
             onChange={event => setCreateSortOrder(event.target.value)}
             className="mt-2 h-11 w-full rounded-xl border border-white/10 bg-[#0b0e16] px-3 font-mono text-sm text-white outline-none focus:border-fuchsia-400/50 disabled:cursor-not-allowed disabled:opacity-45"
           />
+        </label>
+
+        <label
+          htmlFor="create-group-markup-percent"
+          className="block text-[11px] font-medium text-white/55"
+        >
+          Markup (%)
+          <input
+            id="create-group-markup-percent"
+            type="text"
+            inputMode="decimal"
+            value={createMarkupPercent}
+            disabled={isMutating}
+            placeholder="Ikut catalog"
+            aria-describedby="create-group-markup-helper"
+            onChange={event => setCreateMarkupPercent(event.target.value)}
+            className="mt-2 h-11 w-full rounded-xl border border-white/10 bg-[#0b0e16] px-3 font-mono text-sm text-white outline-none placeholder:text-white/20 focus:border-fuchsia-400/50 disabled:cursor-not-allowed disabled:opacity-45"
+          />
+          <span
+            id="create-group-markup-helper"
+            className="mt-1.5 block text-[9px] font-normal leading-4 text-white/30"
+          >
+            {catalogMarkupHelper}
+          </span>
         </label>
 
         <Checkbox
@@ -375,7 +465,7 @@ export default function ProductGroupManager({
                 <form
                   key={group.ID}
                   onSubmit={event => void handleUpdate(event, group.ID)}
-                  className="grid gap-3 rounded-2xl border border-fuchsia-300/20 bg-fuchsia-400/[0.055] p-4 md:grid-cols-[minmax(0,1fr)_110px_auto_auto] md:items-end"
+                  className="grid gap-3 rounded-2xl border border-fuchsia-300/20 bg-fuchsia-400/[0.055] p-4 md:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_110px_minmax(190px,0.75fr)_auto_auto] lg:items-end"
                 >
                   <label className="block text-[11px] font-medium text-white/55">
                     Nama kelompok
@@ -399,6 +489,29 @@ export default function ProductGroupManager({
                       onChange={event => setEditSortOrder(event.target.value)}
                       className="mt-2 h-10 w-full rounded-xl border border-white/10 bg-[#0b0e16] px-3 font-mono text-sm text-white outline-none focus:border-fuchsia-400/50 disabled:opacity-45"
                     />
+                  </label>
+                  <label
+                    htmlFor={`edit-group-markup-percent-${group.ID}`}
+                    className="block text-[11px] font-medium text-white/55"
+                  >
+                    Markup (%)
+                    <input
+                      id={`edit-group-markup-percent-${group.ID}`}
+                      type="text"
+                      inputMode="decimal"
+                      value={editMarkupPercent}
+                      disabled={isMutating}
+                      placeholder="Ikut catalog"
+                      aria-describedby={`edit-group-markup-helper-${group.ID}`}
+                      onChange={event => setEditMarkupPercent(event.target.value)}
+                      className="mt-2 h-10 w-full rounded-xl border border-white/10 bg-[#0b0e16] px-3 font-mono text-sm text-white outline-none placeholder:text-white/20 focus:border-fuchsia-400/50 disabled:opacity-45"
+                    />
+                    <span
+                      id={`edit-group-markup-helper-${group.ID}`}
+                      className="mt-1.5 block text-[9px] font-normal leading-4 text-white/30"
+                    >
+                      {catalogMarkupHelper}
+                    </span>
                   </label>
                   <Checkbox
                     isSelected={editIsActive}
@@ -451,6 +564,12 @@ export default function ProductGroupManager({
                   </div>
                   <p className="mt-1 font-mono text-[10px] text-white/35">
                     Urutan {group.sort_order} · {productCount} produk
+                  </p>
+                  <p className="mt-1 text-[10px] font-medium text-fuchsia-100/55">
+                    {productGroupMarkupLabel(
+                      group.markup_percent,
+                      catalog.markup_percent
+                    )}
                   </p>
                 </div>
 

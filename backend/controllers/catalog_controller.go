@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"encoding/json"
 	"strings"
 
 	"github.com/derry/anggijajan-v2-backend/database"
@@ -65,14 +66,41 @@ func GetCatalogBySlug(c *fiber.Ctx) error {
 		})
 	}
 
+	for productIndex := range catalog.Products {
+		catalog.Products[productIndex].ApplyStorefrontPricing(catalog.MarkupPercent, nil)
+	}
+	for groupIndex := range catalog.ProductGroups {
+		productGroup := &catalog.ProductGroups[groupIndex]
+		for productIndex := range productGroup.Products {
+			productGroup.Products[productIndex].ApplyStorefrontPricing(
+				catalog.MarkupPercent,
+				productGroup.MarkupPercent,
+			)
+		}
+	}
+
 	return c.JSON(catalog)
 }
 
 // --- 4. CREATE CATALOG ---
 func CreateCatalog(c *fiber.Ctx) error {
+	var markupInput struct {
+		MarkupPercent json.RawMessage `json:"markup_percent"`
+	}
+	if err := json.Unmarshal(c.Body(), &markupInput); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "Input katalog tidak valid"})
+	}
+	markupPercent, markupPresent, err := parseNullableMarkupPercent(markupInput.MarkupPercent)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+	}
+
 	var input models.Catalog
 	if err := c.BodyParser(&input); err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": "Invalid Input"})
+	}
+	if markupPresent {
+		input.MarkupPercent = markupPercent
 	}
 
 	// Auto Generate Slug kalo kosong (Simple version)
@@ -98,6 +126,17 @@ func UpdateCatalog(c *fiber.Ctx) error {
 		return c.Status(404).JSON(fiber.Map{"error": "Catalog not found"})
 	}
 
+	var markupInput struct {
+		MarkupPercent json.RawMessage `json:"markup_percent"`
+	}
+	if err := json.Unmarshal(c.Body(), &markupInput); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "Input katalog tidak valid"})
+	}
+	markupPercent, markupPresent, err := parseNullableMarkupPercent(markupInput.MarkupPercent)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+	}
+
 	// Parsing Input
 	var input models.Catalog
 	if err := c.BodyParser(&input); err != nil {
@@ -119,6 +158,9 @@ func UpdateCatalog(c *fiber.Ctx) error {
 	catalog.IsPublic = input.IsPublic
 	catalog.IsPopular = input.IsPopular
 	catalog.SortOrder = input.SortOrder
+	if markupPresent {
+		catalog.MarkupPercent = markupPercent
+	}
 
 	// Save changes
 	if err := database.DB.Save(&catalog).Error; err != nil {

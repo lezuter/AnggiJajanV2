@@ -74,6 +74,7 @@ func Connect() {
 		&models.Banner{},
 		&models.Setting{},
 		&models.PendingProduct{},
+		&models.ProviderSyncState{},
 	)
 
 	if err != nil {

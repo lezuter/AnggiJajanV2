@@ -140,7 +140,15 @@ func buildMidtransPaymentQuote(
 	}
 
 	capital := math.Round(product.Price)
-	targetNet := models.CalculateSellingPrice(capital)
+	var groupMarkup *float64
+	if product.ProductGroup != nil {
+		groupMarkup = product.ProductGroup.MarkupPercent
+	}
+	effectiveMarkupRate := models.ResolveStorefrontMarkupRate(
+		product.Catalog.MarkupPercent,
+		groupMarkup,
+	)
+	targetNet := models.CalculateSellingPriceWithMarkup(capital, effectiveMarkupRate)
 	startingPrice, err := config.StartingPrice(targetNet)
 	if err != nil {
 		return midtransPaymentQuote{}, err
@@ -259,6 +267,7 @@ func GetMidtransPaymentMethods(c *fiber.Ctx) error {
 
 	var product models.Product
 	if err := database.DB.
+		Preload("Catalog").
 		Preload("ProductGroup").
 		First(&product, uint(productID)).Error; err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{

@@ -549,10 +549,13 @@ export default function GameDetailClient ({ slug }: { slug: string }) {
 
     setAccountWarning(false)
     setAccountAttention(false)
-    setSelectedQuoteKey('')
-    setPaymentMethods([])
-    setPaymentMethodsError('')
-    setSelectedProduct(product)
+
+    if (selectedProduct?.ID !== product.ID) {
+      setSelectedQuoteKey('')
+      setPaymentMethods([])
+      setPaymentMethodsError('')
+      setSelectedProduct(product)
+    }
 
     if (paymentScrollTimerRef.current !== null) {
       window.clearTimeout(paymentScrollTimerRef.current)
@@ -683,7 +686,7 @@ export default function GameDetailClient ({ slug }: { slug: string }) {
     <div className='relative isolate w-full overflow-x-clip bg-black text-white'>
       <Navbar />
 
-      <main className='relative z-10 isolate min-h-screen overflow-x-clip bg-black pb-16 pt-28 sm:pb-20'>
+      <main className='relative z-10 isolate min-h-screen overflow-x-clip bg-black pb-16 pt-16 sm:pb-20'>
         <div className='pointer-events-none absolute inset-x-0 top-0 -z-20 h-[920px] overflow-hidden'>
           <CyberneticGridShader />
           <div className='absolute inset-0 bg-[radial-gradient(circle_at_50%_30%,transparent_0%,rgba(0,0,0,0.18)_48%,rgba(0,0,0,0.72)_100%)]' />
@@ -716,7 +719,7 @@ export default function GameDetailClient ({ slug }: { slug: string }) {
             shortName={shortName}
           />
 
-          <div className='mt-4 grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_370px]'>
+          <div className='-mt-[72px] grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_370px]'>
             <div className='space-y-6'>
               {!PURCHASES_ENABLED && (
                 <section

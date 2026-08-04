@@ -36,6 +36,7 @@ interface Catalog {
   cardcode: string;
   category_id?: string | number;
   category?: string;
+  markup_percent?: number | null;
 }
 
 interface Product {
@@ -91,6 +92,29 @@ interface BulkFeedback {
   message: string;
 }
 
+interface ProductSyncJobPayload {
+  id?: string;
+  job_id?: string;
+  status?: 'running' | 'completed' | 'failed';
+  stage?: string;
+  progress?: number;
+  processed?: number;
+  total?: number;
+  error?: string;
+}
+
+interface ProviderSyncStatus {
+  provider: string;
+  running: boolean;
+  source: 'cron' | 'manual' | '';
+  last_started_at?: string | null;
+  last_finished_at?: string | null;
+  last_success_at?: string | null;
+  last_error?: string;
+  cooldown_until?: string | null;
+  retry_after_seconds: number;
+}
+
 interface ProductGroupPayload {
   ID?: number;
   id?: number;
@@ -98,6 +122,7 @@ interface ProductGroupPayload {
   catalog_cardcode?: string;
   sort_order?: number;
   is_active?: boolean;
+  markup_percent?: number | null;
   product_count?: number;
   products?: Array<{ ID?: number; id?: number }>;
 }
@@ -154,6 +179,13 @@ function getPayloadError(payload: unknown, fallback: string) {
   return fallback
 }
 
+function formatSyncCountdown(totalSeconds: number) {
+  const safeSeconds = Math.max(0, Math.ceil(totalSeconds))
+  const minutes = Math.floor(safeSeconds / 60)
+  const seconds = safeSeconds % 60
+  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+}
+
 async function readJSONPayload(response: Response): Promise<unknown> {
   try {
     return await response.json()
@@ -206,6 +238,11 @@ function normalizeProductGroups(
         catalog_cardcode: group.catalog_cardcode || catalogCardCode,
         sort_order: Number.isFinite(group.sort_order) ? group.sort_order as number : 0,
         is_active: group.is_active !== false,
+        markup_percent:
+          typeof group.markup_percent === 'number' &&
+          Number.isFinite(group.markup_percent)
+            ? group.markup_percent
+            : null,
         product_count: group.product_count,
         products
       }
@@ -364,6 +401,16 @@ export default function ProductsPage() {
 
   const [loading, setLoading] = useState(true)
   const [isSyncing, setIsSyncing] = useState(false)
+  const [syncProgress, setSyncProgress] = useState(0)
+  const [syncStage, setSyncStage] = useState('Menyiapkan sinkronisasi')
+  const [syncProcessed, setSyncProcessed] = useState(0)
+  const [syncTotal, setSyncTotal] = useState(0)
+  const [digiflazzSyncStatus, setDigiflazzSyncStatus] =
+    useState<ProviderSyncStatus | null>(null)
+  const [syncRetryAfter, setSyncRetryAfter] = useState(0)
+  const [syncFeedback, setSyncFeedback] = useState<BulkFeedback | null>(null)
+  const syncPollRunIDRef = useRef(0)
+  const syncStatusRequestInFlightRef = useRef(false)
 
   const [activeCategory, setActiveCategory] = useState('all')
   const [activeCatalog, setActiveCatalog] = useState('all')
@@ -431,6 +478,24 @@ export default function ProductsPage() {
     }
   }, [get]) // Masukin get ke dependency array
 
+  const fetchDigiflazzSyncStatus = useCallback(async () => {
+    if (syncStatusRequestInFlightRef.current) return
+    syncStatusRequestInFlightRef.current = true
+
+    try {
+      const response = await get('/admin/products/sync-status/digiflazz')
+      const payload = await readJSONPayload(response) as ProviderSyncStatus | null
+      if (!response.ok || !payload) return
+
+      setDigiflazzSyncStatus(payload)
+      setSyncRetryAfter(Math.max(0, payload.retry_after_seconds || 0))
+    } catch (error) {
+      console.error('Status sync Digiflazz gagal dimuat:', error)
+    } finally {
+      syncStatusRequestInFlightRef.current = false
+    }
+  }, [get])
+
   const fetchProductGroups = useCallback(async (catalogCardCode: string) => {
     if (catalogCardCode === 'all') {
       productGroupRequestIDRef.current += 1
@@ -492,29 +557,123 @@ export default function ProductsPage() {
   }, [fetchAllData])
 
   useEffect(() => {
+    void fetchDigiflazzSyncStatus()
+  }, [fetchDigiflazzSyncStatus])
+
+  useEffect(() => {
+    const pollingInterval = window.setInterval(
+      () => void fetchDigiflazzSyncStatus(),
+      digiflazzSyncStatus?.running ? 2000 : 5000
+    )
+    return () => window.clearInterval(pollingInterval)
+  }, [digiflazzSyncStatus?.running, fetchDigiflazzSyncStatus])
+
+  useEffect(() => {
+    const countdownInterval = window.setInterval(() => {
+      setSyncRetryAfter(current => Math.max(0, current - 1))
+    }, 1000)
+    return () => window.clearInterval(countdownInterval)
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      syncPollRunIDRef.current += 1
+    }
+  }, [])
+
+  useEffect(() => {
     if (activeCatalog === 'all') return
     void fetchProductGroups(activeCatalog)
   }, [activeCatalog, fetchProductGroups])
 
-  const handleSyncAPI = async (provider = 'all') => {
+  const handleSyncAPI = async () => {
+    const pollRunID = ++syncPollRunIDRef.current
     setIsSyncing(true)
-    try {
-      // Langsung tembak POST, token & URL udah diurusin useApi.
-      // Kirim body kosong {} karena post di useApi lu butuh argumen ke-2.
-      const res = await post(`/admin/products/sync/${provider}`, {})
+    setSyncFeedback(null)
+    setSyncProgress(1)
+    setSyncStage('Menunggu proses sinkronisasi')
+    setSyncProcessed(0)
+    setSyncTotal(0)
 
-      if (res.ok) {
-        await fetchAllData()
-        alert(`Sinkronisasi produk (${provider}) berhasil!`)
-      } else {
-        const errorData = await res.json()
-        alert(`Gagal sinkronisasi: ${errorData.error || 'Server error'}`)
+    try {
+      const startResponse = await post('/admin/products/sync-jobs/digiflazz', {})
+      const startPayload = await readJSONPayload(startResponse) as ProductSyncJobPayload | null
+      if (!startResponse.ok) {
+        if (startResponse.status === 409 || startResponse.status === 429) {
+          setSyncFeedback({
+            type: 'error',
+            message: getPayloadError(
+              startPayload,
+              'Sinkronisasi Digiflazz belum dapat dimulai.'
+            )
+          })
+          await fetchDigiflazzSyncStatus()
+          return
+        }
+        throw new Error(
+          getPayloadError(startPayload, 'Proses sinkronisasi gagal dimulai.')
+        )
       }
+
+      const jobID = startPayload?.job_id
+      if (!jobID) {
+        throw new Error('Backend tidak mengembalikan ID sinkronisasi.')
+      }
+
+      const pollingDeadline = Date.now() + 15 * 60 * 1000
+      while (Date.now() < pollingDeadline) {
+        await new Promise(resolve => window.setTimeout(resolve, 750))
+        if (pollRunID !== syncPollRunIDRef.current) return
+
+        const statusResponse = await get(
+          `/admin/products/sync-jobs/${encodeURIComponent(jobID)}`
+        )
+        const statusPayload = await readJSONPayload(statusResponse) as ProductSyncJobPayload | null
+        if (pollRunID !== syncPollRunIDRef.current) return
+        if (!statusResponse.ok) {
+          throw new Error(
+            getPayloadError(statusPayload, 'Status sinkronisasi gagal dimuat.')
+          )
+        }
+
+        setSyncProgress(
+          typeof statusPayload?.progress === 'number'
+            ? Math.min(100, Math.max(0, statusPayload.progress))
+            : 0
+        )
+        setSyncStage(statusPayload?.stage || 'Sinkronisasi sedang berjalan')
+        setSyncProcessed(statusPayload?.processed || 0)
+        setSyncTotal(statusPayload?.total || 0)
+
+        if (statusPayload?.status === 'failed') {
+          await fetchDigiflazzSyncStatus()
+          throw new Error(statusPayload.error || 'Sinkronisasi produk gagal.')
+        }
+        if (statusPayload?.status === 'completed') {
+          await fetchAllData()
+          await fetchDigiflazzSyncStatus()
+          setSyncFeedback({
+            type: 'success',
+            message: 'Sinkronisasi produk Digiflazz berhasil.'
+          })
+          return
+        }
+      }
+
+      throw new Error('Sinkronisasi melewati batas waktu 15 menit.')
     } catch (error) {
       console.error("Error pas sync:", error)
-      alert('Terjadi kesalahan jaringan saat Sync.')
+      setSyncFeedback({
+        type: 'error',
+        message: error instanceof Error
+          ? error.message
+          : 'Terjadi kesalahan jaringan saat Sync.'
+      })
+      await fetchDigiflazzSyncStatus()
     } finally {
-      setIsSyncing(false)
+      if (pollRunID === syncPollRunIDRef.current) {
+        setIsSyncing(false)
+      }
     }
   }
 
@@ -1097,7 +1256,30 @@ export default function ProductsPage() {
     setBulkDialog(null)
     setEditingProduct(null)
     setBulkFeedback(null)
+    setSyncFeedback(null)
   }
+
+  const isDigiflazzRunning = digiflazzSyncStatus?.running === true
+  const isDigiflazzCooldown = syncRetryAfter > 0
+  const isDigiflazzSyncDisabled =
+    isSyncing || isDigiflazzRunning || isDigiflazzCooldown
+  const syncButtonLabel = isSyncing || (
+    isDigiflazzRunning && digiflazzSyncStatus?.source === 'manual'
+  )
+    ? 'Sync Digiflazz berjalan...'
+    : isDigiflazzRunning && digiflazzSyncStatus?.source === 'cron'
+      ? 'Cron Digiflazz berjalan...'
+      : isDigiflazzCooldown
+        ? `Tunggu ${formatSyncCountdown(syncRetryAfter)}`
+        : 'Sync Digiflazz'
+  const syncStatusHelper =
+    isDigiflazzRunning && digiflazzSyncStatus?.source === 'cron'
+      ? 'Sinkronisasi otomatis sedang mengambil price list.'
+      : isDigiflazzCooldown
+        ? `Sync tersedia lagi dalam ${formatSyncCountdown(syncRetryAfter)}.`
+        : digiflazzSyncStatus?.last_success_at
+          ? `Terakhir berhasil: ${new Date(digiflazzSyncStatus.last_success_at).toLocaleString('id-ID')}.`
+          : null
 
   return (
     <main className="w-full min-h-screen flex flex-col text-white pb-10 px-8">
@@ -1223,7 +1405,11 @@ export default function ProductsPage() {
 
             {activeCatalogInfo ? (
               <ProductGroupManager
-                catalog={activeCatalogInfo}
+                catalog={{
+                  cardcode: activeCatalogInfo.cardcode,
+                  name: activeCatalogInfo.name,
+                  markup_percent: activeCatalogInfo.markup_percent
+                }}
                 groups={productGroups}
                 loading={productGroupsLoading}
                 isMutating={isProductGroupMutating}
@@ -1262,20 +1448,62 @@ export default function ProductsPage() {
               <div className="flex gap-3 w-full md:w-auto">
                 {activeTab === 'live' && (
                   <button
-                    onClick={() => handleSyncAPI('all')}
-                    disabled={isSyncing}
+                    onClick={() => void handleSyncAPI()}
+                    disabled={isDigiflazzSyncDisabled}
                     className={`flex-1 md:flex-none px-6 py-3.5 rounded-2xl flex items-center justify-center gap-2 transition-all font-bold text-sm border
-                      ${isSyncing
+                      ${isDigiflazzSyncDisabled
                         ? 'bg-[#0084FF]/5 border-[#0084FF]/10 text-[#0084FF]/50 cursor-not-allowed'
                         : 'bg-[#0084FF]/10 border-[#0084FF]/30 text-[#0084FF] hover:bg-[#0084FF]/20'
                       }`}
                   >
-                    {isSyncing ? <RefreshCw size={18} className="animate-spin" /> : <Zap size={18} />}
-                    <span className="hidden sm:block">{isSyncing ? 'Syncing...' : 'Sync Provider'}</span>
+                    {isSyncing || isDigiflazzRunning
+                      ? <RefreshCw size={18} className="animate-spin" />
+                      : <Zap size={18} />}
+                    <span>{syncButtonLabel}</span>
                   </button>
                 )}
               </div>
             </div>
+
+            {syncStatusHelper && (
+              <p className="mt-2 text-xs text-white/45" role="status" aria-live="polite">
+                {syncStatusHelper}
+              </p>
+            )}
+
+            {syncFeedback && (
+              <div className="mt-3">
+                <BulkFeedbackBanner
+                  feedback={syncFeedback}
+                  onDismiss={() => setSyncFeedback(null)}
+                />
+              </div>
+            )}
+
+            {isSyncing && (
+              <div
+                role="status"
+                aria-live="polite"
+                className="rounded-2xl border border-[#0084FF]/20 bg-[#0084FF]/[0.055] px-4 py-3"
+              >
+                <div className="flex items-center justify-between gap-4 text-[11px]">
+                  <span className="font-medium text-sky-100/75">
+                    {syncStage}
+                  </span>
+                  <span className="shrink-0 font-mono text-[#0084FF]">
+                    {syncTotal > 0
+                      ? `${syncProcessed}/${syncTotal} · ${syncProgress}%`
+                      : `${syncProgress}%`}
+                  </span>
+                </div>
+                <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-black/30">
+                  <div
+                    className="h-full rounded-full bg-gradient-to-r from-[#0084FF] to-fuchsia-400 transition-[width] duration-500"
+                    style={{ width: `${syncProgress}%` }}
+                  />
+                </div>
+              </div>
+            )}
           </div>
 
           {bulkFeedback && !bulkDialog && (

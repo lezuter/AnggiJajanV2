@@ -14,21 +14,12 @@ import (
 	"os"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/derry/anggijajan-v2-backend/database"
 	"github.com/derry/anggijajan-v2-backend/models"
 	"github.com/gofiber/fiber/v2"
 	"gorm.io/gorm"
-)
-
-var (
-	digiflazzSyncMutex sync.Mutex
-
-	// ErrDigiflazzSyncInProgress mencegah cron dan sync manual berjalan
-	// bersamaan terhadap inventory Digiflazz yang sama.
-	ErrDigiflazzSyncInProgress = errors.New("sinkronisasi Digiflazz sedang berjalan")
 )
 
 // 1. GET ALL PRODUCTS
@@ -41,6 +32,14 @@ func GetProducts(c *fiber.Ctx) error {
 		Find(&products).Error; err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": "Gagal ambil data produk"})
 	}
+	for productIndex := range products {
+		product := &products[productIndex]
+		var groupMarkup *float64
+		if product.ProductGroup != nil {
+			groupMarkup = product.ProductGroup.MarkupPercent
+		}
+		product.ApplyStorefrontPricing(product.Catalog.MarkupPercent, groupMarkup)
+	}
 	var latestProduct models.Product
 	database.DB.Order("updated_at desc").First(&latestProduct)
 	return c.JSON(fiber.Map{"products": products, "last_update": latestProduct.UpdatedAt})
@@ -51,7 +50,16 @@ func SyncAllProducts(c *fiber.Ctx) error {
 	provider := c.Params("provider")
 
 	if provider == "all" {
-		t1, a1, unmapped1, e1 := RunDigiflazzSync()
+		t1, a1, unmapped1, e1 := RunDigiflazzSync("manual")
+		if errors.Is(e1, ErrDigiflazzSyncInProgress) || errors.Is(e1, ErrDigiflazzSyncCooldown) {
+			return digiflazzSyncRejectionResponse(c, e1)
+		}
+		if e1 != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"error":   "Gagal Sync digiflazz",
+				"message": e1.Error(),
+			})
+		}
 		t2, a2, unmapped2, e2 := RunApiGamesSync()
 
 		return c.JSON(fiber.Map{
@@ -69,7 +77,7 @@ func SyncAllProducts(c *fiber.Ctx) error {
 
 	switch provider {
 	case "digiflazz":
-		total, active, unmapped, err = RunDigiflazzSync()
+		total, active, unmapped, err = RunDigiflazzSync("manual")
 	case "apigames":
 		total, active, unmapped, err = RunApiGamesSync()
 	default:
@@ -77,12 +85,11 @@ func SyncAllProducts(c *fiber.Ctx) error {
 	}
 
 	if err != nil {
-		status := fiber.StatusInternalServerError
-		if errors.Is(err, ErrDigiflazzSyncInProgress) {
-			status = fiber.StatusConflict
+		if errors.Is(err, ErrDigiflazzSyncInProgress) || errors.Is(err, ErrDigiflazzSyncCooldown) {
+			return digiflazzSyncRejectionResponse(c, err)
 		}
 
-		return c.Status(status).JSON(fiber.Map{
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error":   "Gagal Sync " + provider,
 			"message": err.Error(),
 		})
@@ -98,11 +105,123 @@ func SyncAllProducts(c *fiber.Ctx) error {
 }
 
 // 3. MESIN DIGIFLAZZ (DENGAN RADAR GAME BARU)
-func RunDigiflazzSync() (int, int, []string, error) {
-	if !digiflazzSyncMutex.TryLock() {
-		return 0, 0, nil, ErrDigiflazzSyncInProgress
+type DigiflazzSyncProgressReporter func(stage string, processed, total int)
+
+type digiflazzPriceListEnvelope struct {
+	Data    json.RawMessage `json:"data"`
+	Message string          `json:"message"`
+	RC      json.RawMessage `json:"rc"`
+}
+
+type digiflazzProviderError struct {
+	Message string          `json:"message"`
+	RC      json.RawMessage `json:"rc"`
+}
+
+func digiflazzPriceListSignature(username, apiKey string) string {
+	digest := md5.Sum([]byte(username + apiKey + "pricelist"))
+	return hex.EncodeToString(digest[:])
+}
+
+func digiflazzResponseCode(raw json.RawMessage) string {
+	if len(raw) == 0 || string(raw) == "null" {
+		return ""
 	}
-	defer digiflazzSyncMutex.Unlock()
+
+	var text string
+	if err := json.Unmarshal(raw, &text); err == nil {
+		return strings.TrimSpace(text)
+	}
+
+	return strings.Trim(strings.TrimSpace(string(raw)), `"`)
+}
+
+func decodeDigiflazzPriceList(body io.Reader) ([]map[string]interface{}, error) {
+	var envelope digiflazzPriceListEnvelope
+	if err := json.NewDecoder(body).Decode(&envelope); err != nil {
+		return nil, fmt.Errorf("response Digiflazz tidak valid: %w", err)
+	}
+
+	var products []map[string]interface{}
+	if err := json.Unmarshal(envelope.Data, &products); err == nil {
+		if len(products) == 0 {
+			return nil, fmt.Errorf("Digiflazz mengembalikan daftar harga kosong")
+		}
+		return products, nil
+	}
+
+	providerError := digiflazzProviderError{
+		Message: strings.TrimSpace(envelope.Message),
+		RC:      envelope.RC,
+	}
+	if len(envelope.Data) > 0 && string(envelope.Data) != "null" {
+		var dataError digiflazzProviderError
+		if err := json.Unmarshal(envelope.Data, &dataError); err == nil {
+			if message := strings.TrimSpace(dataError.Message); message != "" {
+				providerError.Message = message
+			}
+			if len(dataError.RC) > 0 {
+				providerError.RC = dataError.RC
+			}
+		}
+	}
+
+	responseCode := digiflazzResponseCode(providerError.RC)
+	if providerError.Message != "" {
+		if responseCode != "" {
+			return nil, fmt.Errorf(
+				"Digiflazz menolak price list (RC %s): %s",
+				responseCode,
+				providerError.Message,
+			)
+		}
+		return nil, fmt.Errorf("Digiflazz menolak price list: %s", providerError.Message)
+	}
+
+	return nil, fmt.Errorf("format data price list Digiflazz tidak dikenali")
+}
+
+func RunDigiflazzSync(source string) (int, int, []string, error) {
+	return runDigiflazzSync(source, nil)
+}
+
+func RunDigiflazzSyncWithProgress(
+	source string,
+	reportProgress DigiflazzSyncProgressReporter,
+) (int, int, []string, error) {
+	return runDigiflazzSync(source, reportProgress)
+}
+
+func runDigiflazzSync(
+	source string,
+	reportProgress DigiflazzSyncProgressReporter,
+) (int, int, []string, error) {
+	lease, err := digiflazzCoordinator.Start(source)
+	if err != nil {
+		return 0, 0, nil, err
+	}
+	return runDigiflazzSyncWithLease(lease, reportProgress)
+}
+
+func runDigiflazzSyncWithLease(
+	lease *digiflazzSyncLease,
+	reportProgress DigiflazzSyncProgressReporter,
+) (total int, active int, unmapped []string, syncErr error) {
+	providerRequestSent := false
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			panicErr := fmt.Errorf("proses sync Digiflazz panic: %v", recovered)
+			_ = digiflazzCoordinator.Finish(lease, panicErr, providerRequestSent)
+			panic(recovered)
+		}
+		if finishErr := digiflazzCoordinator.Finish(lease, syncErr, providerRequestSent); finishErr != nil && syncErr == nil {
+			syncErr = finishErr
+		}
+	}()
+
+	if reportProgress != nil {
+		reportProgress("fetching_price_list", 0, 0)
+	}
 
 	username := strings.TrimSpace(os.Getenv("DIGIFLAZZ_USERNAME"))
 	apiKey := strings.TrimSpace(os.Getenv("DIGIFLAZZ_API_KEY"))
@@ -110,9 +229,7 @@ func RunDigiflazzSync() (int, int, []string, error) {
 		return 0, 0, nil, fmt.Errorf("credential Digiflazz belum lengkap")
 	}
 
-	signStr := username + apiKey + "depo"
-	hash := md5.Sum([]byte(signStr))
-	signature := hex.EncodeToString(hash[:])
+	signature := digiflazzPriceListSignature(username, apiKey)
 
 	payload := map[string]interface{}{
 		"cmd":      "prepaid",
@@ -135,6 +252,7 @@ func RunDigiflazzSync() (int, int, []string, error) {
 	request.Header.Set("Content-Type", "application/json")
 
 	client := &http.Client{Timeout: 30 * time.Second}
+	providerRequestSent = true
 	resp, err := client.Do(request)
 	if err != nil {
 		return 0, 0, nil, fmt.Errorf("gagal menghubungi Digiflazz: %w", err)
@@ -148,14 +266,12 @@ func RunDigiflazzSync() (int, int, []string, error) {
 		)
 	}
 
-	var result map[string]interface{}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return 0, 0, nil, fmt.Errorf("response Digiflazz tidak valid: %w", err)
+	data, err := decodeDigiflazzPriceList(resp.Body)
+	if err != nil {
+		return 0, 0, nil, err
 	}
-
-	data, ok := result["data"].([]interface{})
-	if !ok {
-		return 0, 0, nil, fmt.Errorf("format data provider tidak valid")
+	if reportProgress != nil {
+		reportProgress("validating_snapshot", 0, len(data))
 	}
 
 	count, activeCount := 0, 0
@@ -199,10 +315,9 @@ func RunDigiflazzSync() (int, int, []string, error) {
 			}
 		}
 
-		for _, item := range data {
-			providerProduct, ok := item.(map[string]interface{})
-			if !ok {
-				continue
+		for itemIndex, providerProduct := range data {
+			if reportProgress != nil && (itemIndex%25 == 0 || itemIndex == len(data)-1) {
+				reportProgress("updating_products", itemIndex+1, len(data))
 			}
 
 			sku, _ := providerProduct["buyer_sku_code"].(string)
@@ -326,6 +441,9 @@ func RunDigiflazzSync() (int, int, []string, error) {
 		unmappedBrands = append(unmappedBrands, brand)
 	}
 	sort.Strings(unmappedBrands)
+	if reportProgress != nil && err == nil {
+		reportProgress("finalizing", len(data), len(data))
+	}
 
 	return count, activeCount, unmappedBrands, err
 }

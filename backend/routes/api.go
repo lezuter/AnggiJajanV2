@@ -57,6 +57,9 @@ func SetupRoutes(app *fiber.App) {
 
 	// PRODUCT
 	admin.Post("/products/sync/:provider", controllers.SyncAllProducts)
+	admin.Post("/products/sync-jobs/:provider", controllers.StartProductSyncJob)
+	admin.Get("/products/sync-jobs/:id", controllers.GetProductSyncJob)
+	admin.Get("/products/sync-status/digiflazz", controllers.GetDigiflazzSyncStatus)
 	admin.Patch("/products/bulk", controllers.BulkUpdateProducts)
 	admin.Put("/products/:id/image", controllers.UpdateProductImage)
 	// Route CRUD Biasa

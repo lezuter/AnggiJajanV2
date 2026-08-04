@@ -355,7 +355,7 @@ export default function PaymentMethodSelector ({
               <section aria-labelledby='recommended-payment-heading'>
                 <h3
                   id='recommended-payment-heading'
-                  className='font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-200 sm:text-xs'
+                  className='text-base font-medium tracking-[-0.02em] text-white/[0.9] sm:text-lg'
                 >
                   Rekomendasi
                 </h3>

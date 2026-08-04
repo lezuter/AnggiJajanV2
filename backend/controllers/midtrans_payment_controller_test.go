@@ -185,6 +185,37 @@ func TestBuildMidtransPaymentQuoteCheapProduct(t *testing.T) {
 	}
 }
 
+func TestBuildMidtransPaymentQuoteUsesProductGroupMarkup(t *testing.T) {
+	activation := configureMidtransQuoteTest(t, "other_qris,dana")
+	catalogMarkup := 2.0
+	groupMarkup := 3.0
+	product := models.Product{
+		Price: 10_000,
+		Catalog: models.Catalog{
+			MarkupPercent: &catalogMarkup,
+		},
+		ProductGroup: &models.ProductGroup{
+			MarkupPercent: &groupMarkup,
+		},
+	}
+
+	quote, err := buildMidtransPaymentQuote(product, activation)
+	if err != nil {
+		t.Fatalf("buildMidtransPaymentQuote() error = %v", err)
+	}
+	if quote.ProductAmount != 10_300 {
+		t.Fatalf("product amount = %v, want 10300", quote.ProductAmount)
+	}
+	for _, method := range quote.Methods {
+		if method.TotalAmount != quote.StartingPrice {
+			t.Fatalf("method %s total %v != starting price %v", method.ProviderMethod, method.TotalAmount, quote.StartingPrice)
+		}
+		if method.CustomerSurcharge != 0 {
+			t.Fatalf("method %s customer surcharge = %v, want 0", method.ProviderMethod, method.CustomerSurcharge)
+		}
+	}
+}
+
 func TestBuildMidtransPaymentQuoteLargeProductAllowsSafeVA(t *testing.T) {
 	activation := configureMidtransQuoteTest(t, "other_qris,dana,bca_va,seabank_va")
 

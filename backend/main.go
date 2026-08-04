@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"log"
 	"os"
 
@@ -21,6 +22,9 @@ func main() {
 
 	// Connect ke DB (Sekaligus ngerjain AutoMigrate & mindahin data SN lama)
 	database.Connect()
+	if err := controllers.InitializeDigiflazzSyncCoordinator(); err != nil {
+		log.Fatal("Gagal menginisialisasi coordinator sync Digiflazz: ", err)
+	}
 
 	// Panggil seeder dari file seeder.go
 	database.SeedUsers()
@@ -43,19 +47,34 @@ func main() {
 	// ==========================================
 	c := cron.New()
 
-	c.AddFunc("@every 1h", func() {
-		log.Println("⏰ [CRON] Memulai Auto-Sync Digiflazz...")
-		total, active, unmapped, err := controllers.RunDigiflazzSync()
+	runDigiflazzSync := func(trigger string) {
+		log.Printf("⏰ [%s] Memulai Auto-Sync Digiflazz...", trigger)
+		total, active, unmapped, err := controllers.RunDigiflazzSync("cron")
 
-		if err != nil {
-			log.Printf("❌ [CRON] Gagal Sync: %v", err)
+		if errors.Is(err, controllers.ErrDigiflazzSyncInProgress) {
+			log.Println("[SYNC][DIGIFLAZZ] Cron dilewati: sync masih berjalan")
+		} else if errors.Is(err, controllers.ErrDigiflazzSyncCooldown) {
+			status, statusErr := controllers.CurrentDigiflazzSyncStatus()
+			if statusErr != nil {
+				log.Printf("[SYNC][DIGIFLAZZ] Cron dilewati: cooldown aktif (status gagal dimuat: %v)", statusErr)
+			} else {
+				log.Printf("[SYNC][DIGIFLAZZ] Cron dilewati: cooldown tersisa %d detik", status.RetryAfterSeconds)
+			}
+		} else if err != nil {
+			log.Printf("❌ [%s] Gagal Sync: %v", trigger, err)
 		} else {
-			log.Printf("✅ [CRON] Selesai! Update %d produk (Aktif: %d, Belum mapped: %d)", total, active, len(unmapped))
+			log.Printf("✅ [%s] Selesai! Update %d produk (Aktif: %d, Belum mapped: %d)", trigger, total, active, len(unmapped))
 		}
-	})
+	}
+
+	if _, err := c.AddFunc("@every 15m", func() {
+		runDigiflazzSync("CRON")
+	}); err != nil {
+		log.Printf("❌ Gagal menjadwalkan Auto-Sync Digiflazz: %v", err)
+	}
 
 	c.Start()
-	log.Println("⏳ Cron Job Berjalan: Auto-Sync setiap 1 jam")
+	log.Println("⏳ Cron Job Berjalan: Auto-Sync setiap 15 menit")
 	// ==========================================
 
 	port := os.Getenv("PORT")
