@@ -2,13 +2,19 @@ package controllers
 
 import (
 	"encoding/json"
+	"errors"
 	"strings"
 
 	"github.com/derry/anggijajan-v2-backend/database"
 	"github.com/derry/anggijajan-v2-backend/models"
 	"github.com/gofiber/fiber/v2"
+	"github.com/jackc/pgx/v5/pgconn"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
+
+var errCatalogStillReferenced = errors.New("catalog masih direferensikan")
+var deleteCatalogByCardCode = deleteCatalogByCardCodeFromDB
 
 // --- 1. GET ALL CATALOGS (ADMIN) ---
 func GetAdminCatalogs(c *fiber.Ctx) error {
@@ -173,14 +179,72 @@ func UpdateCatalog(c *fiber.Ctx) error {
 }
 
 // --- 6. DELETE CATALOG ---
-func DeleteCatalog(c *fiber.Ctx) error {
-	id := c.Params("id")
-	var catalog models.Catalog
+func deleteCatalogByCardCodeFromDB(cardCode string) error {
+	return database.DB.Transaction(func(tx *gorm.DB) error {
+		var catalog models.Catalog
+		if err := tx.
+			Clauses(clause.Locking{Strength: "UPDATE"}).
+			First(&catalog, "card_code = ?", cardCode).Error; err != nil {
+			return err
+		}
 
-	if err := database.DB.First(&catalog, "card_code = ?", id).Error; err != nil {
-		return c.Status(404).JSON(fiber.Map{"error": "Catalog not found"})
+		var productCount int64
+		if err := tx.Unscoped().
+			Model(&models.Product{}).
+			Where("catalog_cardcode = ?", cardCode).
+			Count(&productCount).Error; err != nil {
+			return err
+		}
+
+		var productGroupCount int64
+		if err := tx.Unscoped().
+			Model(&models.ProductGroup{}).
+			Where("catalog_cardcode = ?", cardCode).
+			Count(&productGroupCount).Error; err != nil {
+			return err
+		}
+
+		if productCount > 0 || productGroupCount > 0 {
+			return errCatalogStillReferenced
+		}
+
+		result := tx.Delete(&catalog)
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected == 0 {
+			return gorm.ErrRecordNotFound
+		}
+
+		return nil
+	})
+}
+
+func isCatalogReferenceConflict(err error) bool {
+	if errors.Is(err, errCatalogStillReferenced) {
+		return true
 	}
 
-	database.DB.Delete(&catalog)
+	var postgresError *pgconn.PgError
+	return errors.As(err, &postgresError) && postgresError.Code == "23503"
+}
+
+// --- 6. DELETE CATALOG ---
+func DeleteCatalog(c *fiber.Ctx) error {
+	err := deleteCatalogByCardCode(c.Params("id"))
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Catalog not found"})
+	}
+	if isCatalogReferenceConflict(err) {
+		return c.Status(fiber.StatusConflict).JSON(fiber.Map{
+			"error": "Catalog masih memiliki produk atau kelompok produk.",
+		})
+	}
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Gagal menghapus catalog",
+		})
+	}
+
 	return c.JSON(fiber.Map{"message": "Catalog deleted"})
 }

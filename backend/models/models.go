@@ -20,7 +20,8 @@ type User struct {
 
 // Model Catalog (Card Game/Brand)
 type Catalog struct {
-	CardCode      string   `gorm:"primaryKey;size:20" json:"cardcode"`
+	ID            uint     `gorm:"primaryKey" json:"id"`
+	CardCode      string   `gorm:"column:card_code;size:20;not null;uniqueIndex:idx_catalogs_card_code_reference" json:"cardcode"`
 	Name          string   `json:"name"`
 	Slug          string   `gorm:"uniqueIndex" json:"slug"`
 	ShortName     string   `json:"short_name"`
@@ -36,14 +37,13 @@ type Catalog struct {
 	SortOrder int    `gorm:"default:0;index" json:"sort_order"`
 	IsPublic  bool   `gorm:"default:true;index" json:"is_public"`
 
-	IsActive    bool           `gorm:"default:true" json:"is_active"`
-	CheckIDCode string         `json:"check_id_code"`
-	CreatedAt   time.Time      `json:"created_at"`
-	UpdatedAt   time.Time      `json:"updated_at"`
-	DeletedAt   gorm.DeletedAt `gorm:"index" json:"-"`
-
-	ProductGroups []ProductGroup `gorm:"foreignKey:CatalogCardCode;references:CardCode;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"product_groups"`
-	Products      []Product      `gorm:"foreignKey:CatalogCardCode;constraint:OnUpdate:CASCADE,OnDelete:SET NULL;" json:"products"`
+	IsActive      bool           `gorm:"default:true" json:"is_active"`
+	CheckIDCode   string         `json:"check_id_code"`
+	CreatedAt     time.Time      `json:"created_at"`
+	UpdatedAt     time.Time      `json:"updated_at"`
+	DeletedAt     gorm.DeletedAt `gorm:"index" json:"-"`
+	ProductGroups []ProductGroup `gorm:"foreignKey:CatalogCardCode;references:CardCode;constraint:OnUpdate:CASCADE,OnDelete:RESTRICT;" json:"product_groups"`
+	Products      []Product      `gorm:"foreignKey:CatalogCardCode;references:CardCode;constraint:OnUpdate:CASCADE,OnDelete:RESTRICT;" json:"products"`
 }
 
 // ProductGroup is an admin-managed section inside a catalog. Provider syncs
@@ -52,7 +52,7 @@ type ProductGroup struct {
 	gorm.Model
 	Name            string    `json:"name" gorm:"size:100;not null;check:chk_product_group_name_nonempty,char_length(btrim(name)) > 0"`
 	CatalogCardCode string    `json:"catalog_cardcode" gorm:"column:catalog_cardcode;size:20;not null;index"`
-	Catalog         Catalog   `json:"-" gorm:"foreignKey:CatalogCardCode;references:CardCode;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
+	Catalog         Catalog   `json:"-" gorm:"foreignKey:CatalogCardCode;references:CardCode;constraint:OnUpdate:CASCADE,OnDelete:RESTRICT;"`
 	SortOrder       int       `json:"sort_order" gorm:"not null;default:0;index;check:chk_product_group_sort_order_nonnegative,sort_order >= 0"`
 	IsActive        bool      `json:"is_active" gorm:"not null;default:true;index"`
 	MarkupPercent   *float64  `json:"markup_percent" gorm:"column:markup_percent"`
@@ -63,7 +63,7 @@ type ProductGroup struct {
 type Product struct {
 	gorm.Model
 	Name            string        `json:"name"`
-	Code            string        `gorm:"uniqueIndex" json:"code"`
+	Code            string        `gorm:"not null;index" json:"code"`
 	Price           float64       `json:"price"`
 	SellingPrice    float64       `json:"selling_price" gorm:"-"`
 	StartingPrice   float64       `json:"starting_price" gorm:"-"`
@@ -74,12 +74,14 @@ type Product struct {
 	AdminEnabled    bool          `json:"admin_enabled" gorm:"default:true;index"`
 	IsArchived      bool          `json:"is_archived" gorm:"default:false;index"` // Kolom kompatibilitas; tidak digunakan oleh workflow admin.
 	ImageURL        string        `json:"image_url"`
-	CatalogCardCode string        `json:"catalog_cardcode" gorm:"column:catalog_cardcode;index"`
-	Catalog         Catalog       `gorm:"foreignKey:CatalogCardCode;references:CardCode" json:"catalog"`
+	CatalogCardCode string        `json:"catalog_cardcode" gorm:"column:catalog_cardcode;not null;index"`
+	Catalog         Catalog       `gorm:"foreignKey:CatalogCardCode;references:CardCode;constraint:OnUpdate:CASCADE,OnDelete:RESTRICT;" json:"catalog"`
 	ProductGroupID  *uint         `json:"product_group_id" gorm:"index"`
 	ProductGroup    *ProductGroup `json:"product_group,omitempty" gorm:"foreignKey:ProductGroupID;constraint:OnUpdate:CASCADE,OnDelete:SET NULL;"`
 	SortOrder       int           `json:"sort_order" gorm:"not null;default:0;index;check:chk_product_sort_order_nonnegative,sort_order >= 0"`
 	Provider        string        `json:"provider" gorm:"default:'digiflazz';index"`
+	ProviderRemoved    bool       `gorm:"column:provider_removed;not null;default:false;index" json:"provider_removed"`
+	ProviderLastSeenAt *time.Time `gorm:"column:provider_last_seen_at;index" json:"provider_last_seen_at,omitempty"`
 }
 
 // ProviderSyncState persists provider coordination metadata so cooldowns

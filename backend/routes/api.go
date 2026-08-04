@@ -64,6 +64,7 @@ func SetupRoutes(app *fiber.App) {
 	admin.Put("/products/:id/image", controllers.UpdateProductImage)
 	// Route CRUD Biasa
 	admin.Put("/products/:id", controllers.UpdateProduct)
+	admin.Delete("/products/:id/permanent", controllers.DeleteProviderRemovedProduct)
 
 	// BANNER
 	admin.Get("/banners", controllers.GetAdminBanners)     // Buat Admin liat list

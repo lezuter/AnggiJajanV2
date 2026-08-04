@@ -48,6 +48,8 @@ interface Product {
   stock: number;
   is_active: boolean;
   admin_enabled: boolean;
+  provider_removed: boolean;
+  provider_last_seen_at?: string | null;
   provider?: string;
   catalog_cardcode?: string;
   catalog?: Catalog;
@@ -913,6 +915,8 @@ export default function ProductsPage() {
 
   const displayedProducts = useMemo(() => {
     return products.filter(p => {
+      if (p.provider_removed) return false
+      
       const pCatalogCode = getProductCatalogCode(p)
       const catalogInfo = catalogs.find(c => c.cardcode === pCatalogCode)
       const productGroupID = getProductGroupID(p)

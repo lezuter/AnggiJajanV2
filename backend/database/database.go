@@ -81,6 +81,18 @@ func Connect() {
 		log.Fatal("❌ Gagal Migrasi Schema: ", err)
 	}
 
+	if err := migratePendingProductProviderSKUIntegrity(DB); err != nil {
+		log.Fatal("❌ Gagal migrasi index pending_products: ", err)
+	}
+
+	if err := migrateProductCodeIntegrity(DB); err != nil {
+		log.Fatal("❌ Gagal migrasi integritas SKU produk: ", err)
+	}
+
+	if err := migrateCanonicalCatalogForeignKeys(DB); err != nil {
+		log.Fatal("❌ Gagal migrasi FK canonical katalog: ", err)
+	}
+
 	if err := migrateProductGroupIntegrity(); err != nil {
 		log.Fatal("Gagal migrasi integritas kelompok produk: ", err)
 	}
@@ -150,10 +162,239 @@ func migrateCatalogReferenceIntegrity() error {
 			)
 		}
 
-		return tx.Exec(`
+		if err := tx.Exec(`
 			CREATE UNIQUE INDEX IF NOT EXISTS idx_catalogs_card_code_reference
 			ON catalogs (card_code)
+		`).Error; err != nil {
+			return err
+		}
+
+		return tx.Exec(`
+			ALTER TABLE catalogs
+			ALTER COLUMN card_code SET NOT NULL
 		`).Error
+	})
+}
+
+type productCodeIntegrityAudit struct {
+	InvalidCodes   int64
+	DuplicateCodes int64
+}
+
+func (audit productCodeIntegrityAudit) validate() error {
+	if audit.InvalidCodes > 0 {
+		return fmt.Errorf("terdapat %d products.code NULL/kosong", audit.InvalidCodes)
+	}
+	if audit.DuplicateCodes > 0 {
+		return fmt.Errorf("terdapat %d grup products.code duplikat setelah normalisasi", audit.DuplicateCodes)
+	}
+	return nil
+}
+
+func loadProductCodeIntegrityAudit(tx *gorm.DB) (productCodeIntegrityAudit, error) {
+	audit := productCodeIntegrityAudit{}
+	if err := tx.Raw(`
+		SELECT COUNT(*)
+		FROM products
+		WHERE code IS NULL OR BTRIM(code) = ''
+	`).Scan(&audit.InvalidCodes).Error; err != nil {
+		return productCodeIntegrityAudit{}, err
+	}
+	if err := tx.Raw(`
+		SELECT COUNT(*)
+		FROM (
+			SELECT LOWER(BTRIM(code))
+			FROM products
+			GROUP BY LOWER(BTRIM(code))
+			HAVING COUNT(*) > 1
+		) AS duplicate_product_codes
+	`).Scan(&audit.DuplicateCodes).Error; err != nil {
+		return productCodeIntegrityAudit{}, err
+	}
+	return audit, nil
+}
+
+func productCodeIntegrityStatements() []string {
+	return []string{
+		`ALTER TABLE products ALTER COLUMN code SET NOT NULL`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_products_code_normalized_unique
+		 ON products (LOWER(BTRIM(code)))`,
+	}
+}
+
+func migrateProductCodeIntegrity(db *gorm.DB) error {
+	return db.Transaction(func(tx *gorm.DB) error {
+		audit, err := loadProductCodeIntegrityAudit(tx)
+		if err != nil {
+			return fmt.Errorf("gagal audit SKU produk: %w", err)
+		}
+		if err := audit.validate(); err != nil {
+			return fmt.Errorf("audit SKU produk gagal: %w", err)
+		}
+		for _, statement := range productCodeIntegrityStatements() {
+			if err := tx.Exec(statement).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+func migratePendingProductProviderSKUIntegrity(db *gorm.DB) error {
+	return db.Transaction(func(tx *gorm.DB) error {
+		var duplicatePairs int64
+		if err := tx.Raw(`
+			SELECT COUNT(*)
+			FROM (
+				SELECT LOWER(BTRIM(provider)) AS normalized_provider,
+				       BTRIM(raw_sku) AS normalized_sku
+				FROM pending_products
+				WHERE provider IS NOT NULL
+				  AND BTRIM(provider) <> ''
+				  AND raw_sku IS NOT NULL
+				  AND BTRIM(raw_sku) <> ''
+				GROUP BY LOWER(BTRIM(provider)), BTRIM(raw_sku)
+				HAVING COUNT(*) > 1
+			) AS duplicate_pending_products
+		`).Scan(&duplicatePairs).Error; err != nil {
+			return err
+		}
+		if duplicatePairs > 0 {
+			return fmt.Errorf(
+				"terdapat %d pasangan pending_products provider + raw_sku duplikat; rapikan data sebelum migrasi",
+				duplicatePairs,
+			)
+		}
+
+		return tx.Exec(`
+			CREATE UNIQUE INDEX IF NOT EXISTS uidx_pending_products_provider_raw_sku
+			ON pending_products (LOWER(BTRIM(provider)), BTRIM(raw_sku))
+			WHERE provider IS NOT NULL
+			  AND BTRIM(provider) <> ''
+			  AND raw_sku IS NOT NULL
+			  AND BTRIM(raw_sku) <> ''
+		`).Error
+	})
+}
+
+type canonicalCatalogReferenceAudit struct {
+	InvalidCatalogs      int64
+	DuplicateCatalogs    int64
+	InvalidProductGroups int64
+	OrphanProductGroups  int64
+	InvalidProducts      int64
+	OrphanProducts       int64
+}
+
+func (audit canonicalCatalogReferenceAudit) validate() error {
+	switch {
+	case audit.InvalidCatalogs > 0:
+		return fmt.Errorf("terdapat %d catalogs.card_code NULL/kosong", audit.InvalidCatalogs)
+	case audit.DuplicateCatalogs > 0:
+		return fmt.Errorf("terdapat %d catalogs.card_code duplikat", audit.DuplicateCatalogs)
+	case audit.InvalidProductGroups > 0:
+		return fmt.Errorf("terdapat %d product_groups.catalog_cardcode NULL/kosong", audit.InvalidProductGroups)
+	case audit.OrphanProductGroups > 0:
+		return fmt.Errorf("terdapat %d orphan product_groups.catalog_cardcode", audit.OrphanProductGroups)
+	case audit.InvalidProducts > 0:
+		return fmt.Errorf("terdapat %d products.catalog_cardcode NULL/kosong", audit.InvalidProducts)
+	case audit.OrphanProducts > 0:
+		return fmt.Errorf("terdapat %d orphan products.catalog_cardcode", audit.OrphanProducts)
+	default:
+		return nil
+	}
+}
+
+func loadCanonicalCatalogReferenceAudit(tx *gorm.DB) (canonicalCatalogReferenceAudit, error) {
+	audit := canonicalCatalogReferenceAudit{}
+	queries := []struct {
+		destination *int64
+		query       string
+	}{
+		{&audit.InvalidCatalogs, `SELECT COUNT(*) FROM catalogs WHERE card_code IS NULL OR BTRIM(card_code) = ''`},
+		{&audit.DuplicateCatalogs, `SELECT COUNT(*) FROM (SELECT card_code FROM catalogs GROUP BY card_code HAVING COUNT(*) > 1) AS duplicate_catalogs`},
+		{&audit.InvalidProductGroups, `SELECT COUNT(*) FROM product_groups WHERE catalog_cardcode IS NULL OR BTRIM(catalog_cardcode) = ''`},
+		{&audit.OrphanProductGroups, `SELECT COUNT(*) FROM product_groups AS product_group WHERE NOT EXISTS (SELECT 1 FROM catalogs AS catalog WHERE catalog.card_code = product_group.catalog_cardcode)`},
+		{&audit.InvalidProducts, `SELECT COUNT(*) FROM products WHERE catalog_cardcode IS NULL OR BTRIM(catalog_cardcode) = ''`},
+		{&audit.OrphanProducts, `SELECT COUNT(*) FROM products AS product WHERE NOT EXISTS (SELECT 1 FROM catalogs AS catalog WHERE catalog.card_code = product.catalog_cardcode)`},
+	}
+
+	for _, item := range queries {
+		if err := tx.Raw(item.query).Scan(item.destination).Error; err != nil {
+			return canonicalCatalogReferenceAudit{}, err
+		}
+	}
+
+	return audit, nil
+}
+
+func canonicalCatalogNotNullStatements() []string {
+	return []string{
+		`ALTER TABLE product_groups
+		 ALTER COLUMN catalog_cardcode SET NOT NULL`,
+		`ALTER TABLE products
+		 ALTER COLUMN catalog_cardcode SET NOT NULL`,
+	}
+}
+
+func canonicalCatalogForeignKeyStatements() []string {
+	return []string{
+		`DO $$
+		BEGIN
+			IF NOT EXISTS (
+				SELECT 1 FROM pg_constraint
+				WHERE conname = 'fk_product_groups_catalog_cardcode'
+				  AND conrelid = 'product_groups'::regclass
+			) THEN
+				ALTER TABLE product_groups
+				ADD CONSTRAINT fk_product_groups_catalog_cardcode
+				FOREIGN KEY (catalog_cardcode)
+				REFERENCES catalogs(card_code)
+				ON UPDATE CASCADE
+				ON DELETE RESTRICT;
+			END IF;
+		END $$`,
+		`DO $$
+		BEGIN
+			IF NOT EXISTS (
+				SELECT 1 FROM pg_constraint
+				WHERE conname = 'fk_products_catalog_cardcode'
+				  AND conrelid = 'products'::regclass
+			) THEN
+				ALTER TABLE products
+				ADD CONSTRAINT fk_products_catalog_cardcode
+				FOREIGN KEY (catalog_cardcode)
+				REFERENCES catalogs(card_code)
+				ON UPDATE CASCADE
+				ON DELETE RESTRICT;
+			END IF;
+		END $$`,
+	}
+}
+
+func migrateCanonicalCatalogForeignKeys(db *gorm.DB) error {
+	return db.Transaction(func(tx *gorm.DB) error {
+		audit, err := loadCanonicalCatalogReferenceAudit(tx)
+		if err != nil {
+			return fmt.Errorf("gagal menjalankan audit referensi katalog: %w", err)
+		}
+		if err := audit.validate(); err != nil {
+			return fmt.Errorf("audit referensi katalog gagal: %w", err)
+		}
+
+		for _, statement := range canonicalCatalogNotNullStatements() {
+			if err := tx.Exec(statement).Error; err != nil {
+				return err
+			}
+		}
+
+		for _, statement := range canonicalCatalogForeignKeyStatements() {
+			if err := tx.Exec(statement).Error; err != nil {
+				return err
+			}
+		}
+
+		return nil
 	})
 }
 

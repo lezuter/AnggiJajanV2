@@ -9,20 +9,98 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/derry/anggijajan-v2-backend/database"
 	"github.com/derry/anggijajan-v2-backend/models"
 	"github.com/gofiber/fiber/v2"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
+var (
+	apiGamesSyncMutex sync.Mutex
+
+	ErrApiGamesSyncInProgress = errors.New("sinkronisasi ApiGames sedang berjalan")
+	digiflazzPriceListURL     = "https://api.digiflazz.com/v1/price-list"
+	digiflazzHTTPClient       = &http.Client{Timeout: 30 * time.Second}
+
+	apiGamesPriceListBaseURL = "https://v1.apigames.id/v2/pricelist"
+	apiGamesHTTPClient       = &http.Client{Timeout: 30 * time.Second}
+)
+
+type apiGamesProductSnapshot struct {
+	SKU, Brand, Name, CatalogCardCode string
+	IsActive                          bool
+}
+
 // 1. GET ALL PRODUCTS
+var (
+	errProviderProductStillPresent = errors.New("produk masih tercatat di provider")
+	errProviderProductHasHistory   = errors.New("produk memiliki riwayat transaksi")
+)
+
+func validateProviderProductPermanentDelete(providerRemoved bool, transactionCount int64) error {
+	if !providerRemoved {
+		return errProviderProductStillPresent
+	}
+	if transactionCount > 0 {
+		return errProviderProductHasHistory
+	}
+	return nil
+}
+
+func DeleteProviderRemovedProduct(c *fiber.Ctx) error {
+	productID, err := c.ParamsInt("id")
+	if err != nil || productID <= 0 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "ID produk tidak valid."})
+	}
+
+	err = database.DB.Transaction(func(tx *gorm.DB) error {
+		var product models.Product
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&product, uint(productID)).Error; err != nil {
+			return err
+		}
+
+		var transactionCount int64
+		if err := tx.Model(&models.Transaction{}).Where("product_id = ?", product.ID).Count(&transactionCount).Error; err != nil {
+			return err
+		}
+		if err := validateProviderProductPermanentDelete(product.ProviderRemoved, transactionCount); err != nil {
+			return err
+		}
+
+		result := tx.Unscoped().Delete(&product)
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected != 1 {
+			return gorm.ErrRecordNotFound
+		}
+		return nil
+	})
+
+	switch {
+	case errors.Is(err, gorm.ErrRecordNotFound):
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Produk tidak ditemukan."})
+	case errors.Is(err, errProviderProductStillPresent):
+		return c.Status(fiber.StatusConflict).JSON(fiber.Map{"error": "Produk masih tercatat di provider dan tidak dapat dihapus permanen."})
+	case errors.Is(err, errProviderProductHasHistory):
+		return c.Status(fiber.StatusConflict).JSON(fiber.Map{"error": "Produk memiliki riwayat transaksi dan tidak dapat dihapus permanen."})
+	case err != nil:
+		return c.Status(fiber.StatusConflict).JSON(fiber.Map{"error": "Produk masih direferensikan data lain atau gagal dihapus permanen."})
+	default:
+		return c.JSON(fiber.Map{"message": "Produk berhasil dihapus permanen.", "id": productID})
+	}
+}
+
 func GetProducts(c *fiber.Ctx) error {
 	var products []models.Product
 	if err := database.DB.
@@ -181,6 +259,430 @@ func decodeDigiflazzPriceList(body io.Reader) ([]map[string]interface{}, error) 
 	return nil, fmt.Errorf("format data price list Digiflazz tidak dikenali")
 }
 
+type digiflazzPriceListProduct struct {
+	BuyerSKUCode        string  `json:"buyer_sku_code"`
+	Brand               string  `json:"brand"`
+	ProductName         string  `json:"product_name"`
+	Price               float64 `json:"price"`
+	BuyerProductStatus  bool    `json:"buyer_product_status"`
+	SellerProductStatus bool    `json:"seller_product_status"`
+	UnlimitedStock      bool    `json:"unlimited_stock"`
+	Stock               int     `json:"stock"`
+}
+
+type digiflazzProductSnapshot struct {
+	SKU             string
+	Brand           string
+	Name            string
+	CatalogCardCode string
+	Price           float64
+	Stock           int
+	IsActive        bool
+}
+
+type digiflazzSyncAction uint8
+
+const (
+	digiflazzSyncSkip digiflazzSyncAction = iota
+	digiflazzSyncPending
+	digiflazzSyncCreate
+	digiflazzSyncUpdate
+)
+
+type digiflazzSyncPlan struct {
+	Action  digiflazzSyncAction
+	Pending *models.PendingProduct
+	Create  *models.Product
+	Updates map[string]interface{}
+}
+
+func buildDigiflazzPriceListSignature(username string, apiKey string) string {
+	return GenerateMD5(username + apiKey + "pricelist")
+}
+
+func parseDigiflazzProduct(product digiflazzPriceListProduct) (digiflazzProductSnapshot, bool) {
+	sku := strings.TrimSpace(product.BuyerSKUCode)
+	if sku == "" {
+		return digiflazzProductSnapshot{}, false
+	}
+
+	stock := product.Stock
+	if product.UnlimitedStock {
+		stock = -1
+	}
+
+	brand := strings.TrimSpace(product.Brand)
+	return digiflazzProductSnapshot{
+		SKU:             sku,
+		Brand:           brand,
+		Name:            strings.TrimSpace(product.ProductName),
+		CatalogCardCode: strings.TrimSpace(GenerateSmartCode(brand)),
+		Price:           product.Price,
+		Stock:           stock,
+		IsActive:        product.BuyerProductStatus && product.SellerProductStatus,
+	}, true
+}
+
+func planDigiflazzProduct(
+	snapshot digiflazzProductSnapshot,
+	validCatalogs map[string]bool,
+	existing *models.Product,
+) digiflazzSyncPlan {
+	providerLastSeenAt := time.Now().UTC()
+
+	if existing != nil {
+		if existing.DeletedAt.Valid {
+			return digiflazzSyncPlan{Action: digiflazzSyncSkip}
+		}
+
+		// Existing products may have been manually mapped by admin. Provider sync
+		// only refreshes provider-owned fields and never detaches product grouping.
+		return digiflazzSyncPlan{
+			Action: digiflazzSyncUpdate,
+			Updates: map[string]interface{}{
+				"name":                  snapshot.Name,
+				"price":                 snapshot.Price,
+				"stock":                 snapshot.Stock,
+				"is_active":             snapshot.IsActive,
+				"provider":              "digiflazz",
+				"provider_removed":      false,
+				"provider_last_seen_at": providerLastSeenAt,
+			},
+		}
+	}
+
+	if snapshot.CatalogCardCode == "" || !validCatalogs[snapshot.CatalogCardCode] {
+		return digiflazzSyncPlan{
+			Action: digiflazzSyncPending,
+			Pending: &models.PendingProduct{
+				RawSKU:   snapshot.SKU,
+				RawBrand: snapshot.Brand,
+				RawName:  snapshot.Name,
+				Provider: "digiflazz",
+				Status:   "pending",
+			},
+		}
+	}
+
+	return digiflazzSyncPlan{
+		Action: digiflazzSyncCreate,
+		Create: &models.Product{
+			Name:               snapshot.Name,
+			Code:               snapshot.SKU,
+			Price:              snapshot.Price,
+			Stock:              snapshot.Stock,
+			IsActive:           snapshot.IsActive,
+			Provider:           "digiflazz",
+			ProviderRemoved:    false,
+			ProviderLastSeenAt: &providerLastSeenAt,
+			CatalogCardCode:    snapshot.CatalogCardCode,
+		},
+	}
+}
+
+func upsertPendingProviderProduct(tx *gorm.DB, pending models.PendingProduct) (bool, error) {
+	pending.RawSKU = strings.TrimSpace(pending.RawSKU)
+	pending.Provider = strings.ToLower(strings.TrimSpace(pending.Provider))
+	if pending.RawSKU == "" || pending.Provider == "" {
+		return false, fmt.Errorf("provider dan SKU pending wajib diisi")
+	}
+
+	var stored models.PendingProduct
+	err := tx.
+		Where(
+			"LOWER(BTRIM(provider)) = ? AND LOWER(BTRIM(raw_sku)) = ?",
+			pending.Provider,
+			strings.ToLower(pending.RawSKU),
+		).
+		First(&stored).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return true, tx.Create(&pending).Error
+	}
+	if err != nil {
+		return false, err
+	}
+
+	err = tx.Model(&stored).Updates(map[string]interface{}{
+		"raw_brand": pending.RawBrand,
+		"raw_name":  pending.RawName,
+		"status":    "pending",
+	}).Error
+	return false, err
+}
+
+func fetchDigiflazzSnapshot(
+	client *http.Client,
+	endpoint string,
+	username string,
+	apiKey string,
+) ([]digiflazzPriceListProduct, error) {
+	payload := struct {
+		Command  string `json:"cmd"`
+		Username string `json:"username"`
+		Sign     string `json:"sign"`
+	}{
+		Command:  "prepaid",
+		Username: username,
+		Sign:     buildDigiflazzPriceListSignature(username, apiKey),
+	}
+
+	encodedPayload, err := json.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("gagal membentuk request Digiflazz: %w", err)
+	}
+
+	request, err := http.NewRequest(http.MethodPost, endpoint, bytes.NewReader(encodedPayload))
+	if err != nil {
+		return nil, fmt.Errorf("gagal membuat request Digiflazz: %w", err)
+	}
+	request.Header.Set("Content-Type", "application/json")
+
+	response, err := client.Do(request)
+	if err != nil {
+		return nil, fmt.Errorf("gagal menghubungi Digiflazz: %w", err)
+	}
+	defer response.Body.Close()
+
+	body, err := io.ReadAll(io.LimitReader(response.Body, 8<<20))
+	if err != nil {
+		return nil, fmt.Errorf("gagal membaca response Digiflazz: %w", err)
+	}
+	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+		return nil, fmt.Errorf("Digiflazz mengembalikan HTTP %d", response.StatusCode)
+	}
+
+	var envelope struct {
+		Data json.RawMessage `json:"data"`
+	}
+	if err := json.Unmarshal(body, &envelope); err != nil {
+		return nil, fmt.Errorf("response Digiflazz tidak valid: %w", err)
+	}
+	if len(envelope.Data) == 0 || string(envelope.Data) == "null" {
+		return nil, fmt.Errorf("response Digiflazz tidak memiliki data pricelist")
+	}
+
+	var products []digiflazzPriceListProduct
+	if err := json.Unmarshal(envelope.Data, &products); err != nil {
+		var providerError struct {
+			RC      string `json:"rc"`
+			Message string `json:"message"`
+		}
+		if objectErr := json.Unmarshal(envelope.Data, &providerError); objectErr == nil &&
+			(strings.TrimSpace(providerError.RC) != "" || strings.TrimSpace(providerError.Message) != "") {
+			return nil, fmt.Errorf(
+				"Digiflazz menolak pricelist (rc=%s): %s",
+				strings.TrimSpace(providerError.RC),
+				strings.TrimSpace(providerError.Message),
+			)
+		}
+		return nil, fmt.Errorf("format data pricelist Digiflazz tidak valid: %w", err)
+	}
+
+	if len(products) == 0 {
+		return nil, fmt.Errorf("snapshot pricelist Digiflazz kosong; inventory tidak diubah")
+	}
+
+	validSKUCount := 0
+	for _, product := range products {
+		if strings.TrimSpace(product.BuyerSKUCode) != "" {
+			validSKUCount++
+		}
+	}
+	if validSKUCount == 0 {
+		return nil, fmt.Errorf("snapshot pricelist Digiflazz tidak memiliki SKU valid; inventory tidak diubah")
+	}
+
+	return products, nil
+}
+
+func missingDigiflazzProductUpdates() map[string]interface{} {
+	return map[string]interface{}{
+		"is_active":        false,
+		"stock":            0,
+		"provider_removed": true,
+	}
+}
+
+func syncDigiflazzSnapshot(
+	db *gorm.DB,
+	products []digiflazzPriceListProduct,
+) (int, int, []string, error) {
+	if len(products) == 0 {
+		return 0, 0, nil, fmt.Errorf("snapshot pricelist Digiflazz kosong; inventory tidak diubah")
+	}
+
+	uniqueProducts := make([]digiflazzPriceListProduct, 0, len(products))
+	normalizedSKUs := make([]string, 0, len(products))
+	seenSKUs := make(map[string]struct{}, len(products))
+	for _, product := range products {
+		normalizedSKU := strings.ToLower(strings.TrimSpace(product.BuyerSKUCode))
+		if normalizedSKU == "" {
+			continue
+		}
+		if _, duplicate := seenSKUs[normalizedSKU]; duplicate {
+			continue
+		}
+		seenSKUs[normalizedSKU] = struct{}{}
+		uniqueProducts = append(uniqueProducts, product)
+		normalizedSKUs = append(normalizedSKUs, normalizedSKU)
+	}
+	if len(uniqueProducts) == 0 {
+		return 0, 0, nil, fmt.Errorf("snapshot pricelist Digiflazz tidak memiliki SKU unik yang valid; inventory tidak diubah")
+	}
+
+	count, activeCount := 0, 0
+	existingUpdated, pendingCreated, missingCount := 0, 0, int64(0)
+	providerOnline, providerOffline := 0, 0
+	unmappedMap := make(map[string]bool)
+
+	err := db.Transaction(func(tx *gorm.DB) error {
+		var existingProviderCount int64
+		if err := tx.Model(&models.Product{}).
+			Where("LOWER(BTRIM(provider)) = ?", "digiflazz").
+			Where("UPPER(COALESCE(name, '')) NOT LIKE ?", "%TEST%").
+			Where("UPPER(COALESCE(code, '')) NOT LIKE ?", "%TEST%").
+			Count(&existingProviderCount).Error; err != nil {
+			return err
+		}
+		if existingProviderCount >= 20 && int64(len(uniqueProducts))*4 < existingProviderCount {
+			return fmt.Errorf(
+				"snapshot pricelist Digiflazz tidak masuk akal: %d SKU unik untuk %d produk existing; inventory tidak diubah",
+				len(uniqueProducts),
+				existingProviderCount,
+			)
+		}
+
+		var catalogs []models.Catalog
+		if err := tx.Select("card_code").Find(&catalogs).Error; err != nil {
+			return err
+		}
+
+		validCatalogs := make(map[string]bool, len(catalogs))
+		for _, catalog := range catalogs {
+			code := strings.TrimSpace(catalog.CardCode)
+			if code != "" {
+				validCatalogs[code] = true
+			}
+		}
+
+		// Hanya SKU yang benar-benar tidak ada di snapshot valid yang ditandai
+		// removed. Produk yang hadir namun offline akan diperbarui di loop bawah.
+		missingResult := tx.Model(&models.Product{}).
+			Where("LOWER(BTRIM(provider)) = ?", "digiflazz").
+			Where("UPPER(COALESCE(name, '')) NOT LIKE ?", "%TEST%").
+			Where("UPPER(COALESCE(code, '')) NOT LIKE ?", "%TEST%").
+			Where("LOWER(BTRIM(code)) NOT IN ?", normalizedSKUs).
+			Updates(missingDigiflazzProductUpdates())
+		if missingResult.Error != nil {
+			return missingResult.Error
+		}
+		missingCount = missingResult.RowsAffected
+
+		if err := tx.Model(&models.Product{}).
+			Where("LOWER(BTRIM(provider)) = ?", "digiflazz").
+			Where("(UPPER(COALESCE(name, '')) LIKE ? OR UPPER(COALESCE(code, '')) LIKE ?)", "%TEST%", "%TEST%").
+			Updates(map[string]interface{}{
+				"is_active":        true,
+				"stock":            -1,
+				"provider_removed": false,
+			}).Error; err != nil {
+			return err
+		}
+
+		for _, providerProduct := range uniqueProducts {
+			snapshot, valid := parseDigiflazzProduct(providerProduct)
+			if !valid {
+				continue
+			}
+
+			var existing models.Product
+			errFind := tx.Unscoped().
+				Where("LOWER(BTRIM(code)) = LOWER(BTRIM(?))", snapshot.SKU).
+				First(&existing).Error
+			var existingPtr *models.Product
+			switch {
+			case errors.Is(errFind, gorm.ErrRecordNotFound):
+				existingPtr = nil
+			case errFind != nil:
+				return errFind
+			default:
+				existingPtr = &existing
+			}
+
+			plan := planDigiflazzProduct(snapshot, validCatalogs, existingPtr)
+			if snapshot.IsActive {
+				providerOnline++
+			} else {
+				providerOffline++
+			}
+			switch plan.Action {
+			case digiflazzSyncPending:
+				if plan.Pending == nil {
+					return fmt.Errorf("Digiflazz pending plan tidak valid untuk SKU %s", snapshot.SKU)
+				}
+				created, err := upsertPendingProviderProduct(tx, *plan.Pending)
+				if err != nil {
+					return err
+				}
+				if created {
+					pendingCreated++
+				}
+				label := snapshot.Brand
+				if label == "" {
+					label = snapshot.CatalogCardCode
+				}
+				if label != "" {
+					unmappedMap[label] = true
+				}
+				continue
+			case digiflazzSyncCreate:
+				if plan.Create == nil {
+					return fmt.Errorf("Digiflazz create plan tidak valid untuk SKU %s", snapshot.SKU)
+				}
+				if err := tx.Create(plan.Create).Error; err != nil {
+					return err
+				}
+			case digiflazzSyncUpdate:
+				if err := tx.Model(&existing).Updates(plan.Updates).Error; err != nil {
+					return err
+				}
+				existingUpdated++
+			case digiflazzSyncSkip:
+				continue
+			default:
+				return fmt.Errorf("Digiflazz sync plan tidak dikenal untuk SKU %s", snapshot.SKU)
+			}
+
+			count++
+			if snapshot.IsActive {
+				activeCount++
+			}
+		}
+
+		return nil
+	})
+
+	unmappedBrands := make([]string, 0, len(unmappedMap))
+	for brand := range unmappedMap {
+		unmappedBrands = append(unmappedBrands, brand)
+	}
+	sort.Strings(unmappedBrands)
+	if err == nil {
+		log.Printf(
+			"[SYNC][DIGIFLAZZ] snapshot=%d sku_unik=%d existing_diperbarui=%d pending_baru=%d hilang=%d online=%d offline=%d",
+			len(products),
+			len(uniqueProducts),
+			existingUpdated,
+			pendingCreated,
+			missingCount,
+			providerOnline,
+			providerOffline,
+		)
+	}
+
+	return count, activeCount, unmappedBrands, err
+}
+
 func RunDigiflazzSync(source string) (int, int, []string, error) {
 	return runDigiflazzSync(source, nil)
 }
@@ -229,80 +731,132 @@ func runDigiflazzSyncWithLease(
 		return 0, 0, nil, fmt.Errorf("credential Digiflazz belum lengkap")
 	}
 
-	signature := digiflazzPriceListSignature(username, apiKey)
-
-	payload := map[string]interface{}{
-		"cmd":      "prepaid",
-		"username": username,
-		"sign":     signature,
-	}
-	jsonPayload, err := json.Marshal(payload)
-	if err != nil {
-		return 0, 0, nil, fmt.Errorf("gagal membuat payload Digiflazz: %w", err)
-	}
-
-	request, err := http.NewRequest(
-		http.MethodPost,
-		"https://api.digiflazz.com/v1/price-list",
-		bytes.NewBuffer(jsonPayload),
-	)
-	if err != nil {
-		return 0, 0, nil, fmt.Errorf("gagal membuat request Digiflazz: %w", err)
-	}
-	request.Header.Set("Content-Type", "application/json")
-
-	client := &http.Client{Timeout: 30 * time.Second}
 	providerRequestSent = true
-	resp, err := client.Do(request)
-	if err != nil {
-		return 0, 0, nil, fmt.Errorf("gagal menghubungi Digiflazz: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		return 0, 0, nil, fmt.Errorf(
-			"Digiflazz mengembalikan HTTP %d",
-			resp.StatusCode,
-		)
-	}
-
-	data, err := decodeDigiflazzPriceList(resp.Body)
+	products, err := fetchDigiflazzSnapshot(
+		digiflazzHTTPClient,
+		digiflazzPriceListURL,
+		username,
+		apiKey,
+	)
 	if err != nil {
 		return 0, 0, nil, err
 	}
 	if reportProgress != nil {
-		reportProgress("validating_snapshot", 0, len(data))
+		reportProgress("validating_snapshot", 0, len(products))
+		reportProgress("updating_products", 0, len(products))
 	}
 
+	total, active, unmapped, syncErr = syncDigiflazzSnapshot(database.DB, products)
+	if reportProgress != nil && syncErr == nil {
+		reportProgress("finalizing", len(products), len(products))
+	}
+	return total, active, unmapped, syncErr
+}
+
+// 4. MESIN APIGAMES (Biar nggak error undefined saat direturn)
+func parseApiGamesProduct(providerProduct map[string]interface{}) (apiGamesProductSnapshot, bool) {
+	sku, _ := providerProduct["product_id"].(string)
+	sku = strings.TrimSpace(sku)
+	if sku == "" {
+		return apiGamesProductSnapshot{}, false
+	}
+
+	brand, _ := providerProduct["brand"].(string)
+	brand = strings.TrimSpace(brand)
+	name, _ := providerProduct["product_name"].(string)
+	status, _ := providerProduct["status"].(string)
+
+	return apiGamesProductSnapshot{
+		SKU:             sku,
+		Brand:           brand,
+		Name:            strings.TrimSpace(name),
+		CatalogCardCode: strings.TrimSpace(GenerateSmartCode(brand)),
+		IsActive:        strings.EqualFold(strings.TrimSpace(status), "tersedia"),
+	}, true
+}
+
+type apiGamesSyncAction uint8
+
+const (
+	apiGamesSyncSkip apiGamesSyncAction = iota
+	apiGamesSyncPending
+	apiGamesSyncCreate
+	apiGamesSyncUpdate
+)
+
+type apiGamesSyncPlan struct {
+	Action  apiGamesSyncAction
+	Pending *models.PendingProduct
+	Create  *models.Product
+	Updates map[string]interface{}
+}
+
+func planApiGamesProduct(
+	snapshot apiGamesProductSnapshot,
+	validCatalogs map[string]bool,
+	existing *models.Product,
+) apiGamesSyncPlan {
+	if snapshot.CatalogCardCode == "" || !validCatalogs[snapshot.CatalogCardCode] {
+		return apiGamesSyncPlan{
+			Action: apiGamesSyncPending,
+			Pending: &models.PendingProduct{
+				RawSKU:   snapshot.SKU,
+				RawBrand: snapshot.Brand,
+				RawName:  snapshot.Name,
+				Provider: "apigames",
+				Status:   "pending",
+			},
+		}
+	}
+
+	if existing == nil {
+		return apiGamesSyncPlan{
+			Action: apiGamesSyncCreate,
+			Create: &models.Product{
+				Name:            snapshot.Name,
+				Code:            snapshot.SKU,
+				Price:           0,
+				IsActive:        snapshot.IsActive,
+				Provider:        "apigames",
+				CatalogCardCode: snapshot.CatalogCardCode,
+			},
+		}
+	}
+
+	if existing.DeletedAt.Valid {
+		return apiGamesSyncPlan{Action: apiGamesSyncSkip}
+	}
+
+	updates := map[string]interface{}{
+		"name":      snapshot.Name,
+		"is_active": snapshot.IsActive,
+	}
+	if existing.CatalogCardCode != snapshot.CatalogCardCode {
+		updates["catalog_cardcode"] = snapshot.CatalogCardCode
+		updates["product_group_id"] = nil
+		updates["sort_order"] = 0
+	}
+
+	return apiGamesSyncPlan{Action: apiGamesSyncUpdate, Updates: updates}
+}
+
+func upsertPendingApiGamesProduct(tx *gorm.DB, pending models.PendingProduct) error {
+	stored := models.PendingProduct{}
+	return tx.
+		Where("provider = ? AND raw_sku = ?", pending.Provider, pending.RawSKU).
+		Assign(map[string]interface{}{
+			"raw_brand": pending.RawBrand,
+			"raw_name":  pending.RawName,
+			"status":    "pending",
+		}).
+		FirstOrCreate(&stored, pending).Error
+}
+
+func syncApiGamesSnapshot(db *gorm.DB, data []map[string]interface{}) (int, int, []string, error) {
 	count, activeCount := 0, 0
 	unmappedMap := make(map[string]bool)
 
-	err = database.DB.Transaction(func(tx *gorm.DB) error {
-		// Produk testing lokal jangan ikut dimatikan oleh sinkronisasi provider.
-		if err := tx.Model(&models.Product{}).
-			Where("LOWER(provider) = ?", "digiflazz").
-			Where(
-				"(UPPER(COALESCE(name, '')) LIKE ? OR UPPER(COALESCE(code, '')) LIKE ?)",
-				"%TEST%",
-				"%TEST%",
-			).
-			Updates(map[string]interface{}{
-				"is_active": true,
-				"stock":     -1,
-			}).Error; err != nil {
-			return err
-		}
-
-		// Produk Digiflazz biasa di-reset sebelum status terbaru diterapkan.
-		// Produk testing dikecualikan dari reset ini.
-		if err := tx.Model(&models.Product{}).
-			Where("LOWER(provider) = ?", "digiflazz").
-			Where("UPPER(COALESCE(name, '')) NOT LIKE ?", "%TEST%").
-			Where("UPPER(COALESCE(code, '')) NOT LIKE ?", "%TEST%").
-			Update("is_active", false).Error; err != nil {
-			return err
-		}
-
+	err := db.Transaction(func(tx *gorm.DB) error {
 		var catalogs []models.Catalog
 		if err := tx.Select("card_code").Find(&catalogs).Error; err != nil {
 			return err
@@ -310,125 +864,72 @@ func runDigiflazzSyncWithLease(
 
 		validCatalogs := make(map[string]bool, len(catalogs))
 		for _, catalog := range catalogs {
-			if catalog.CardCode != "" {
-				validCatalogs[catalog.CardCode] = true
+			cardCode := strings.TrimSpace(catalog.CardCode)
+			if cardCode != "" {
+				validCatalogs[cardCode] = true
 			}
 		}
 
-		for itemIndex, providerProduct := range data {
-			if reportProgress != nil && (itemIndex%25 == 0 || itemIndex == len(data)-1) {
-				reportProgress("updating_products", itemIndex+1, len(data))
-			}
-
-			sku, _ := providerProduct["buyer_sku_code"].(string)
-			sku = strings.TrimSpace(sku)
-			if sku == "" {
+		for _, providerProduct := range data {
+			snapshot, valid := parseApiGamesProduct(providerProduct)
+			if !valid {
 				continue
 			}
 
-			brand, _ := providerProduct["brand"].(string)
-			name, _ := providerProduct["product_name"].(string)
-			price, _ := providerProduct["price"].(float64)
+			if snapshot.CatalogCardCode == "" || !validCatalogs[snapshot.CatalogCardCode] {
+				plan := planApiGamesProduct(snapshot, validCatalogs, nil)
+				if plan.Pending == nil {
+					return fmt.Errorf("ApiGames pending plan tidak valid untuk SKU %s", snapshot.SKU)
+				}
+				if err := upsertPendingApiGamesProduct(tx, *plan.Pending); err != nil {
+					return err
+				}
 
-			buyerStatus, _ := providerProduct["buyer_product_status"].(bool)
-			sellerStatus, _ := providerProduct["seller_product_status"].(bool)
-			isActive := buyerStatus && sellerStatus
-
-			unlimitedStock, _ := providerProduct["unlimited_stock"].(bool)
-			digiStock, _ := providerProduct["stock"].(float64)
-			finalStock := 0
-			if unlimitedStock {
-				finalStock = -1
-			} else {
-				finalStock = int(digiStock)
-			}
-
-			smartCode := GenerateSmartCode(brand)
-
-			// Produk tanpa katalog valid masuk staging area, bukan inventory utama.
-			if !validCatalogs[smartCode] {
-				unmappedLabel := strings.TrimSpace(brand)
+				unmappedLabel := snapshot.Brand
 				if unmappedLabel == "" {
-					unmappedLabel = smartCode
+					unmappedLabel = snapshot.CatalogCardCode
 				}
 				if unmappedLabel != "" {
 					unmappedMap[unmappedLabel] = true
 				}
 
-				var existingPending models.PendingProduct
-				errCheck := tx.
-					Where("raw_sku = ?", sku).
-					First(&existingPending).
-					Error
-
-				switch {
-				case errors.Is(errCheck, gorm.ErrRecordNotFound):
-					if err := tx.Create(&models.PendingProduct{
-						RawSKU:   sku,
-						RawBrand: brand,
-						RawName:  name,
-						Provider: "digiflazz",
-						Status:   "pending",
-					}).Error; err != nil {
-						return err
-					}
-				case errCheck != nil:
-					return errCheck
-				}
-
+				// Existing Product is intentionally not queried or mutated here.
 				continue
 			}
 
 			var existing models.Product
-			errFind := tx.Unscoped().
-				Where("code = ?", sku).
-				First(&existing).
-				Error
-
+			errFind := tx.Unscoped().Where("code = ?", snapshot.SKU).First(&existing).Error
+			var existingPtr *models.Product
 			switch {
 			case errors.Is(errFind, gorm.ErrRecordNotFound):
-				if err := tx.Create(&models.Product{
-					Name:            name,
-					Code:            sku,
-					Price:           price,
-					IsActive:        isActive,
-					Provider:        "digiflazz",
-					CatalogCardCode: smartCode,
-					Stock:           finalStock,
-				}).Error; err != nil {
-					return err
-				}
-
+				existingPtr = nil
 			case errFind != nil:
 				return errFind
-
-			case existing.DeletedAt.Valid:
-				// Produk legacy yang masih soft-deleted tidak dihidupkan diam-diam.
-				continue
-
 			default:
-				updates := map[string]interface{}{
-					"name":      name,
-					"is_active": isActive,
-					"price":     price,
-					"stock":     finalStock,
-				}
+				existingPtr = &existing
+			}
 
-				// Grouping dan sort order tetap dikelola admin. Jika mapping
-				// provider memindahkan produk ke katalog lain, grup lama dilepas.
-				if existing.CatalogCardCode != smartCode {
-					updates["catalog_cardcode"] = smartCode
-					updates["product_group_id"] = nil
-					updates["sort_order"] = 0
+			plan := planApiGamesProduct(snapshot, validCatalogs, existingPtr)
+			switch plan.Action {
+			case apiGamesSyncCreate:
+				if plan.Create == nil {
+					return fmt.Errorf("ApiGames create plan tidak valid untuk SKU %s", snapshot.SKU)
 				}
-
-				if err := tx.Model(&existing).Updates(updates).Error; err != nil {
+				if err := tx.Create(plan.Create).Error; err != nil {
 					return err
 				}
+			case apiGamesSyncUpdate:
+				if err := tx.Model(&existing).Updates(plan.Updates).Error; err != nil {
+					return err
+				}
+			case apiGamesSyncSkip:
+				continue
+			default:
+				return fmt.Errorf("ApiGames sync plan tidak dikenal untuk SKU %s", snapshot.SKU)
 			}
 
 			count++
-			if isActive {
+			if snapshot.IsActive {
 				activeCount++
 			}
 		}
@@ -441,68 +942,77 @@ func runDigiflazzSyncWithLease(
 		unmappedBrands = append(unmappedBrands, brand)
 	}
 	sort.Strings(unmappedBrands)
-	if reportProgress != nil && err == nil {
-		reportProgress("finalizing", len(data), len(data))
-	}
 
 	return count, activeCount, unmappedBrands, err
 }
 
-// 4. MESIN APIGAMES (Biar nggak error undefined saat direturn)
-func RunApiGamesSync() (int, int, []string, error) {
-	// Fungsi ApiGames lu tetep sama, cuma return type-nya disesuaiin
-	mID := os.Getenv("APIGAMES_MERCHANT_ID")
-	sKey := os.Getenv("APIGAMES_SECRET_KEY")
-	sign := GenerateMD5(mID + sKey)
-
-	url := fmt.Sprintf("https://v1.apigames.id/v2/pricelist?merchant=%s&signature=%s", mID, sign)
-	resp, err := http.Get(url)
+func fetchApiGamesSnapshot(
+	client *http.Client,
+	baseURL string,
+	merchantID string,
+	secretKey string,
+) ([]map[string]interface{}, error) {
+	signature := GenerateMD5(merchantID + secretKey)
+	endpoint, err := url.Parse(baseURL)
 	if err != nil {
-		return 0, 0, nil, err
+		return nil, fmt.Errorf("URL ApiGames tidak valid: %w", err)
 	}
-	defer resp.Body.Close()
+
+	query := endpoint.Query()
+	query.Set("merchant", merchantID)
+	query.Set("signature", signature)
+	endpoint.RawQuery = query.Encode()
+
+	request, err := http.NewRequest(http.MethodGet, endpoint.String(), nil)
+	if err != nil {
+		return nil, fmt.Errorf("gagal membuat request ApiGames: %w", err)
+	}
+
+	response, err := client.Do(request)
+	if err != nil {
+		return nil, fmt.Errorf("gagal menghubungi ApiGames: %w", err)
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+		return nil, fmt.Errorf("ApiGames mengembalikan HTTP %d", response.StatusCode)
+	}
 
 	var result struct {
 		Data []map[string]interface{} `json:"data"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	if err := json.NewDecoder(response.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("response ApiGames tidak valid: %w", err)
+	}
+
+	return result.Data, nil
+}
+
+// 4. MESIN APIGAMES
+func RunApiGamesSync() (int, int, []string, error) {
+	if !apiGamesSyncMutex.TryLock() {
+		return 0, 0, nil, ErrApiGamesSyncInProgress
+	}
+	defer apiGamesSyncMutex.Unlock()
+
+	merchantID := strings.TrimSpace(os.Getenv("APIGAMES_MERCHANT_ID"))
+	secretKey := strings.TrimSpace(os.Getenv("APIGAMES_SECRET_KEY"))
+	if merchantID == "" || secretKey == "" {
+		return 0, 0, nil, fmt.Errorf("credential ApiGames belum lengkap")
+	}
+
+	data, err := fetchApiGamesSnapshot(
+		apiGamesHTTPClient,
+		apiGamesPriceListBaseURL,
+		merchantID,
+		secretKey,
+	)
+	if err != nil {
 		return 0, 0, nil, err
 	}
 
-	count, activeCount := 0, 0
-	var unmappedBrands []string // Dikosongin dulu aja buat ApiGames
-
-	err = database.DB.Transaction(func(tx *gorm.DB) error {
-		for _, p := range result.Data {
-			sku, _ := p["product_id"].(string)
-			brand, _ := p["brand"].(string)
-			status, _ := p["status"].(string)
-			if sku == "" {
-				continue
-			}
-
-			isActive := status == "tersedia"
-			smartCode := GenerateSmartCode(brand)
-
-			var existing models.Product
-			errFind := tx.Unscoped().Where("code = ?", sku).First(&existing).Error
-			if errors.Is(errFind, gorm.ErrRecordNotFound) {
-				tx.Create(&models.Product{Name: p["product_name"].(string), Code: sku, Price: 0, IsActive: isActive, Provider: "apigames", CatalogCardCode: smartCode})
-			} else if errFind != nil {
-				return errFind
-			} else if existing.DeletedAt.Valid {
-				continue
-			} else {
-				tx.Model(&existing).Update("is_active", isActive)
-			}
-			count++
-			if isActive {
-				activeCount++
-			}
-		}
-		return nil
-	})
-	return count, activeCount, unmappedBrands, err
+	// Empty snapshots are safe: this flow never mass-disables ApiGames rows.
+	return syncApiGamesSnapshot(database.DB, data)
 }
 
 // 5. CRUD FUNCTIONS (Biar api.go nggak error undefined)
@@ -873,51 +1383,135 @@ func GetPendingProducts(c *fiber.Ctx) error {
 }
 
 // 2. APPROVE / MAP PENDING PRODUCT
+type pendingApprovalPlan struct {
+	ExistingProductID uint
+	Create            *models.Product
+}
+
+func planPendingProductApproval(
+	pending models.PendingProduct,
+	catalogCardCode string,
+	existing *models.Product,
+) (pendingApprovalPlan, error) {
+	if existing != nil {
+		if existing.DeletedAt.Valid {
+			return pendingApprovalPlan{}, fmt.Errorf("SKU sudah dimiliki produk yang terarsip")
+		}
+		return pendingApprovalPlan{ExistingProductID: existing.ID}, nil
+	}
+
+	sku := strings.TrimSpace(pending.RawSKU)
+	provider := strings.ToLower(strings.TrimSpace(pending.Provider))
+	catalogCardCode = strings.TrimSpace(catalogCardCode)
+	if sku == "" || provider == "" || catalogCardCode == "" {
+		return pendingApprovalPlan{}, fmt.Errorf("data pending atau katalog tidak valid")
+	}
+
+	return pendingApprovalPlan{
+		Create: &models.Product{
+			Name:            strings.TrimSpace(pending.RawName),
+			Code:            sku,
+			Price:           0,
+			Stock:           0,
+			IsActive:        false,
+			AdminEnabled:    false,
+			Provider:        provider,
+			CatalogCardCode: catalogCardCode,
+		},
+	}, nil
+}
+
 func ApprovePendingProduct(c *fiber.Ctx) error {
 	var input struct {
 		PendingID       uint   `json:"pending_id"`
 		CatalogCardCode string `json:"catalog_cardcode"`
 	}
-	if err := c.BodyParser(&input); err != nil {
-		return c.Status(400).JSON(fiber.Map{"error": "Input bapuk"})
+	if err := c.BodyParser(&input); err != nil || input.PendingID == 0 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Input approval tidak valid"})
+	}
+	input.CatalogCardCode = strings.TrimSpace(input.CatalogCardCode)
+	if input.CatalogCardCode == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Katalog tujuan wajib dipilih"})
 	}
 
-	// A. Ambil data dari pending
-	var pending models.PendingProduct
-	if err := database.DB.First(&pending, input.PendingID).Error; err != nil {
-		return c.Status(404).JSON(fiber.Map{"error": "Data pending tidak ditemukan"})
-	}
-
-	// B. Cek apakah katalognya valid
-	var catalog models.Catalog
-	if err := database.DB.Where("card_code = ?", input.CatalogCardCode).First(&catalog).Error; err != nil {
-		return c.Status(404).JSON(fiber.Map{"error": "Katalog tujuan tidak ditemukan"})
-	}
-
-	// C. Pindah ke tabel Produk (Transaction biar aman)
+	var productID uint
+	created := false
 	err := database.DB.Transaction(func(tx *gorm.DB) error {
-		// Create produk baru
-		newProduct := models.Product{
-			Name:            pending.RawName,
-			Code:            pending.RawSKU, // SKU dari provider
-			Price:           0,              // Defaultin 0, nanti admin update di dashboard
-			IsActive:        true,
-			Provider:        pending.Provider,
-			CatalogCardCode: catalog.CardCode,
-			Stock:           0,
-		}
-		if err := tx.Create(&newProduct).Error; err != nil {
+		var pending models.PendingProduct
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			First(&pending, input.PendingID).Error; err != nil {
 			return err
 		}
 
-		// Update status pending jadi 'processed'
-		tx.Model(&pending).Update("status", "processed")
+		var catalog models.Catalog
+		if err := tx.Where("card_code = ?", input.CatalogCardCode).First(&catalog).Error; err != nil {
+			return err
+		}
+
+		var existing models.Product
+		errFind := tx.Unscoped().
+			Where("LOWER(BTRIM(code)) = LOWER(BTRIM(?))", pending.RawSKU).
+			First(&existing).Error
+		var existingPtr *models.Product
+		switch {
+		case errors.Is(errFind, gorm.ErrRecordNotFound):
+			existingPtr = nil
+		case errFind != nil:
+			return errFind
+		default:
+			existingPtr = &existing
+		}
+
+		plan, err := planPendingProductApproval(pending, catalog.CardCode, existingPtr)
+		if err != nil {
+			return err
+		}
+
+		if plan.Create != nil {
+			result := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(plan.Create)
+			if result.Error != nil {
+				return result.Error
+			}
+			if result.RowsAffected == 0 {
+				var racedExisting models.Product
+				if err := tx.Unscoped().
+					Where("LOWER(BTRIM(code)) = LOWER(BTRIM(?))", pending.RawSKU).
+					First(&racedExisting).Error; err != nil {
+					return err
+				}
+				productID = racedExisting.ID
+			} else {
+				productID = plan.Create.ID
+				created = true
+			}
+		} else {
+			productID = plan.ExistingProductID
+		}
+
+		if err := tx.Model(&pending).Update("status", "processed").Error; err != nil {
+			return err
+		}
 		return nil
 	})
 
 	if err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": "Gagal Approve Produk"})
+		switch {
+		case errors.Is(err, gorm.ErrRecordNotFound):
+			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Data pending atau katalog tidak ditemukan"})
+		case strings.Contains(strings.ToLower(err.Error()), "terarsip"):
+			return c.Status(fiber.StatusConflict).JSON(fiber.Map{"error": err.Error()})
+		default:
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Gagal approve produk"})
+		}
 	}
 
-	return c.JSON(fiber.Map{"message": "Produk berhasil di-approve & live!"})
+	message := "Pending product ditandai selesai; SKU existing dipertahankan tanpa duplikasi."
+	if created {
+		message = "Produk baru dibuat dalam kondisi nonaktif; sync provider berikutnya akan mengisi harga dan stok."
+	}
+	return c.JSON(fiber.Map{
+		"message":    message,
+		"product_id": productID,
+		"created":    created,
+	})
 }
