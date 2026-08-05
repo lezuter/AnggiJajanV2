@@ -324,12 +324,14 @@ type LoginRequest struct {
 }
 
 type CheckoutRequest struct {
-	ProductID     uint   `json:"product_id"`
-	CustomerPhone string `json:"customer_phone"`
-	QuoteKey      string `json:"quote_key"`
-	PaymentMethod string `json:"payment_method"`
-	CustomerName  string `json:"customer_name"`
-	Email         string `json:"email"`
+	ProductID           uint    `json:"product_id"`
+	CustomerPhone       string  `json:"customer_phone"`
+	QuoteKey            string  `json:"quote_key"`
+	ExpectedTotalAmount float64 `json:"expected_total_amount"`
+	PaymentMethod       string  `json:"payment_method"`
+	CustomerName        string  `json:"customer_name"`
+	Email               string  `json:"email"`
+	PayerPhone          string  `json:"payer_phone"`
 }
 
 type ManualOrderRequest struct {

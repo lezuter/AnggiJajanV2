@@ -54,9 +54,9 @@ type midtransSnapItem struct {
 }
 
 type midtransSnapCustomer struct {
-	FirstName string `json:"first_name"`
-	Email     string `json:"email"`
-	Phone     string `json:"phone"`
+	FirstName string `json:"first_name,omitempty"`
+	Email     string `json:"email,omitempty"`
+	Phone     string `json:"phone,omitempty"`
 }
 
 type midtransSnapCallbacks struct {
@@ -314,6 +314,27 @@ func generateMidtransInvoiceID() (string, error) {
 	return fmt.Sprintf("INV-%d-%s", time.Now().UnixMilli(), suffix), nil
 }
 
+func midtransExpectedTotalMatches(expected, actual float64) bool {
+	if expected <= 0 || actual <= 0 {
+		return false
+	}
+	return int64(math.Round(expected)) == int64(math.Round(actual))
+}
+
+func midtransDefaultCustomerPhone() string {
+	if configured := strings.TrimSpace(
+		os.Getenv("MIDTRANS_DEFAULT_CUSTOMER_PHONE"),
+	); configured != "" {
+		return configured
+	}
+
+	config, err := payments.ResolveMidtransRuntimeConfig()
+	if err == nil && config.Mode == "sandbox" {
+		return "08123456789"
+	}
+	return ""
+}
+
 func buildMidtransSnapPayload(
 	invoiceID string,
 	product models.Product,
@@ -353,7 +374,10 @@ func buildMidtransSnapPayload(
 				os.Getenv("MIDTRANS_DEFAULT_CUSTOMER_EMAIL"),
 				"customer@anggijajan.com",
 			),
-			Phone: strings.TrimSpace(req.CustomerPhone),
+			Phone: firstNonEmpty(
+				req.PayerPhone,
+				midtransDefaultCustomerPhone(),
+			),
 		},
 		EnabledPayments: []string{selected.ProviderMethod},
 	}
@@ -446,6 +470,22 @@ func checkoutWithMidtrans(
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error":  "Metode pembayaran tidak tersedia",
 			"reason": reason,
+		})
+	}
+	if !midtransExpectedTotalMatches(
+		req.ExpectedTotalAmount,
+		selected.TotalAmount,
+	) {
+		return c.Status(fiber.StatusConflict).JSON(fiber.Map{
+			"error":      "Quote pembayaran berubah",
+			"error_code": "QUOTE_CHANGED",
+			"reason":     "Harga atau biaya pembayaran berubah. Periksa total terbaru sebelum melanjutkan.",
+			"current_quote": fiber.Map{
+				"quote_key":          selected.QuoteKey,
+				"total_amount":       selected.TotalAmount,
+				"base_price":         selected.BasePrice,
+				"customer_surcharge": selected.CustomerSurcharge,
+			},
 		})
 	}
 

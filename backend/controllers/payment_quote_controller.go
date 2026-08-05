@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 	"math"
-	"os"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/derry/anggijajan-v2-backend/database"
@@ -164,7 +164,7 @@ func midtransDisabledReason(
 	activation midtransPaymentActivation,
 	providerActive bool,
 	feeConfigured bool,
-	startingPrice float64,
+	transactionAmount float64,
 	netProfit float64,
 	marginAllowed bool,
 ) string {
@@ -176,9 +176,9 @@ func midtransDisabledReason(
 		)
 	case !providerActive:
 		return "Metode belum aktif di akun Midtrans"
-	case startingPrice < method.MinimumAmount:
+	case transactionAmount < method.MinimumAmount:
 		return fmt.Sprintf("Minimum transaksi %s", formatRupiahAmount(method.MinimumAmount))
-	case method.MaximumAmount > 0 && startingPrice > method.MaximumAmount:
+	case method.MaximumAmount > 0 && transactionAmount > method.MaximumAmount:
 		return fmt.Sprintf("Maksimum transaksi %s", formatRupiahAmount(method.MaximumAmount))
 	case !feeConfigured:
 		return "Aturan biaya metode belum dikonfigurasi"
@@ -237,30 +237,66 @@ func chooseMidtransRecommendations(options []midtransPaymentMethodOption) []int 
 	return rankedIndexes
 }
 
-func midtransKredivoCheckoutReady() bool {
-	value := strings.ToLower(strings.TrimSpace(
-		os.Getenv("MIDTRANS_KREDIVO_CHECKOUT_READY"),
-	))
-	switch value {
-	case "1", "true", "yes", "on":
-		return true
-	default:
-		return false
+func midtransPaylaterDisabledReason(providerMethod string) string {
+	providerMethod = strings.ToLower(strings.TrimSpace(providerMethod))
+	switch providerMethod {
+	case "kredivo":
+		return "Kredivo belum tersedia sampai data alamat pelanggan lengkap dan pengujian provider selesai"
+	case "akulaku":
+		mode, err := payments.ResolveMidtransMode()
+		if err != nil || mode == "production" {
+			return "Akulaku membutuhkan nama, email, dan nomor telepon pembayar asli"
+		}
 	}
+	return ""
 }
 
-const midtransPaymentLogoSettingPrefix = "payment_logo_midtrans_"
+const (
+	midtransPaymentLogoSettingPrefix = "payment_logo_midtrans_"
+	midtransPaymentLogoCacheTTL      = 30 * time.Second
+)
 
-func applyMidtransPaymentLogoOverrides(config *payments.MidtransConfig) {
-	if config == nil || database.DB == nil {
-		return
+var (
+	midtransPaymentLogoCacheMu        sync.RWMutex
+	midtransPaymentLogoCacheExpiresAt time.Time
+	midtransPaymentLogoCache          map[string]string
+)
+
+func cloneStringMap(values map[string]string) map[string]string {
+	clone := make(map[string]string, len(values))
+	for key, value := range values {
+		clone[key] = value
 	}
+	return clone
+}
+
+func invalidateMidtransPaymentLogoCache() {
+	midtransPaymentLogoCacheMu.Lock()
+	defer midtransPaymentLogoCacheMu.Unlock()
+	midtransPaymentLogoCache = nil
+	midtransPaymentLogoCacheExpiresAt = time.Time{}
+}
+
+func loadMidtransPaymentLogoOverrides() map[string]string {
+	if database.DB == nil {
+		return map[string]string{}
+	}
+
+	now := time.Now()
+	midtransPaymentLogoCacheMu.RLock()
+	if midtransPaymentLogoCache != nil &&
+		now.Before(midtransPaymentLogoCacheExpiresAt) {
+		cached := cloneStringMap(midtransPaymentLogoCache)
+		midtransPaymentLogoCacheMu.RUnlock()
+		return cached
+	}
+	midtransPaymentLogoCacheMu.RUnlock()
 
 	var settings []models.Setting
 	if err := database.DB.
 		Where("key LIKE ?", midtransPaymentLogoSettingPrefix+"%").
 		Find(&settings).Error; err != nil {
-		return
+		return map[string]string{}
 	}
 
 	overrides := make(map[string]string, len(settings))
@@ -270,12 +306,27 @@ func applyMidtransPaymentLogoOverrides(config *payments.MidtransConfig) {
 			midtransPaymentLogoSettingPrefix,
 		)
 		imageURL := strings.TrimSpace(setting.Value)
-		if providerMethod == "" || imageURL == "" {
+		if providerMethod == "" ||
+			imageURL == "" ||
+			!isValidPaymentLogoURL(imageURL) {
 			continue
 		}
 		overrides[strings.ToLower(providerMethod)] = imageURL
 	}
 
+	midtransPaymentLogoCacheMu.Lock()
+	midtransPaymentLogoCache = cloneStringMap(overrides)
+	midtransPaymentLogoCacheExpiresAt = now.Add(midtransPaymentLogoCacheTTL)
+	midtransPaymentLogoCacheMu.Unlock()
+	return overrides
+}
+
+func applyMidtransPaymentLogoOverrides(config *payments.MidtransConfig) {
+	if config == nil {
+		return
+	}
+
+	overrides := loadMidtransPaymentLogoOverrides()
 	for index := range config.Methods {
 		providerMethod := strings.ToLower(
 			strings.TrimSpace(config.Methods[index].ProviderMethod),
@@ -352,15 +403,31 @@ func buildMidtransPaymentQuote(
 			marginAllowed = false
 		}
 
+		providerActive := activation.Methods[providerMethod]
+		providerInactiveReason := ""
+		if providerMethod == "google_pay" && providerActive {
+			cardActive := activation.Methods["credit_card"] ||
+				activation.Methods["card"]
+			if !cardActive {
+				providerActive = false
+				providerInactiveReason =
+					"Google Pay membutuhkan channel kartu aktif"
+			}
+		}
+
 		disabledReason := midtransDisabledReason(
 			method,
 			activation,
-			activation.Methods[providerMethod],
+			providerActive,
 			feeConfigured,
-			startingPrice,
+			totalAmount,
 			netProfit,
 			marginAllowed,
 		)
+		if disabledReason == "Metode belum aktif di akun Midtrans" &&
+			providerInactiveReason != "" {
+			disabledReason = providerInactiveReason
+		}
 
 		if disabledReason == "" &&
 			!isCustomerSurchargeWorthwhile(
@@ -373,11 +440,10 @@ func buildMidtransPaymentQuote(
 				maximumCustomerSurchargePercent,
 			)
 		}
-		if disabledReason == "" &&
-			providerMethod == "kredivo" &&
-			!midtransKredivoCheckoutReady() {
-			disabledReason =
-				"Kredivo membutuhkan data alamat pelanggan lengkap"
+		if disabledReason == "" {
+			if reason := midtransPaylaterDisabledReason(providerMethod); reason != "" {
+				disabledReason = reason
+			}
 		}
 
 		options = append(options, midtransPaymentMethodOption{
@@ -427,7 +493,7 @@ func buildMidtransPaymentQuote(
 
 	return midtransPaymentQuote{
 		PaymentProvider: "midtrans",
-		FeeBearer:       "MERCHANT",
+		FeeBearer:       "DYNAMIC",
 		ProductAmount:   targetNet,
 		StartingPrice:   startingPrice,
 		Methods:         options,

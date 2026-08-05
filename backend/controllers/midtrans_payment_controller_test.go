@@ -283,12 +283,14 @@ func TestBuildMidtransPaymentQuoteCheapProduct(t *testing.T) {
 	for _, providerMethod := range []string{"bca_va", "seabank_va"} {
 		method := methodByProvider(t, quote, providerMethod)
 		if method.Enabled ||
-			method.DisabledReason != "Minimum transaksi Rp10.000" {
-			t.Fatalf(
-				"%s = enabled %v reason %q",
-				providerMethod,
-				method.Enabled,
+			!strings.Contains(
 				method.DisabledReason,
+				"Biaya metode terlalu besar",
+			) {
+			t.Fatalf(
+				"%s should be disabled by surcharge worthiness: %#v",
+				providerMethod,
+				method,
 			)
 		}
 	}
@@ -378,7 +380,7 @@ func TestBuildMidtransPaymentQuoteAppliesOnlyRequiredSurcharge(t *testing.T) {
 		t,
 		"other_qris,dana,ovo,gopay,bca_va",
 	)
-	capital := 2_000_000.0
+	capital := 1_800_000.0
 
 	quote, err := buildMidtransPaymentQuote(
 		models.Product{Price: capital},
@@ -633,7 +635,7 @@ func TestBuildMidtransSnapPayloadUsesRebuiltQuote(t *testing.T) {
 
 func TestBuildMidtransSnapPayloadUsesSurchargedMethodTotal(t *testing.T) {
 	activation := configureMidtransQuoteTest(t, "other_qris,gopay")
-	product := models.Product{Code: "SKU-GOPAY", Name: "Large Product", Price: 2_000_000}
+	product := models.Product{Code: "SKU-GOPAY", Name: "Large Product", Price: 1_800_000}
 	quote, err := buildMidtransPaymentQuote(product, activation)
 	if err != nil {
 		t.Fatal(err)

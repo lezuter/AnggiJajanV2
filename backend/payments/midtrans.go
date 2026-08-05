@@ -29,10 +29,12 @@ type MidtransRuntimeConfig struct {
 }
 
 type MidtransFeeRule struct {
-	FlatFee     float64 `json:"flat_fee"`
-	PercentFee  float64 `json:"percent_fee"`
-	VATIncluded bool    `json:"-"`
-	Configured  bool    `json:"-"`
+	FlatFee                    float64 `json:"flat_fee"`
+	PercentFee                 float64 `json:"percent_fee"`
+	VATIncluded                bool    `json:"-"`
+	Configured                 bool    `json:"-"`
+	RequiresProductionOverride bool    `json:"-"`
+	Overridden                 bool    `json:"-"`
 }
 
 type MidtransMethod struct {
@@ -159,24 +161,24 @@ func defaultMidtransLogoURL(providerMethod string) string {
 func defaultMidtransMethods() []MidtransMethod {
 	methods := []MidtransMethod{
 		{Code: "QRIS", Name: "QRIS", Category: "QRIS", ProviderMethod: MidtransQRISMethod, MinimumAmount: 1, MaximumAmount: 10_000_000},
-		{Code: "GOPAY", Name: "GoPay", Category: "E_WALLET", ProviderMethod: "gopay", MinimumAmount: 1},
-		{Code: "DANA", Name: "DANA", Category: "E_WALLET", ProviderMethod: "dana", MinimumAmount: 1},
-		{Code: "OVO", Name: "OVO", Category: "E_WALLET", ProviderMethod: "ovo", MinimumAmount: 1},
-		{Code: "SHOPEEPAY", Name: "ShopeePay", Category: "E_WALLET", ProviderMethod: "shopeepay", MinimumAmount: 1},
-		{Code: "GOOGLE_PAY", Name: "Google Pay", Category: "E_WALLET", ProviderMethod: "google_pay", MinimumAmount: 10_000, MaximumAmount: 999_999_999},
+		{Code: "GOPAY", Name: "GoPay", Category: "E_WALLET", ProviderMethod: "gopay", MinimumAmount: 1, MaximumAmount: 2_000_000},
+		{Code: "DANA", Name: "DANA", Category: "E_WALLET", ProviderMethod: "dana", MinimumAmount: 1, MaximumAmount: 2_000_000},
+		{Code: "OVO", Name: "OVO", Category: "E_WALLET", ProviderMethod: "ovo", MinimumAmount: 1, MaximumAmount: 99_999_999},
+		{Code: "SHOPEEPAY", Name: "ShopeePay", Category: "E_WALLET", ProviderMethod: "shopeepay", MinimumAmount: 1, MaximumAmount: 2_000_000},
+		{Code: "GOOGLE_PAY", Name: "Google Pay", Category: "CREDIT_CARD", ProviderMethod: "google_pay", MinimumAmount: 10_000, MaximumAmount: 999_999_999},
 		{Code: "AKULAKU", Name: "Akulaku PayLater", Category: "PAYLATER", ProviderMethod: "akulaku", MinimumAmount: 5_000},
 		{Code: "KREDIVO", Name: "Kredivo", Category: "PAYLATER", ProviderMethod: "kredivo", MinimumAmount: 1},
-		{Code: "BCA_VA", Name: "BCA Virtual Account", Category: "VIRTUAL_ACCOUNT", ProviderMethod: "bca_va", MinimumAmount: 10_000},
+		{Code: "BCA_VA", Name: "BCA Virtual Account", Category: "VIRTUAL_ACCOUNT", ProviderMethod: "bca_va", MinimumAmount: 10_000, MaximumAmount: 20_000_000_000},
 		{Code: "BNI_VA", Name: "BNI Virtual Account", Category: "VIRTUAL_ACCOUNT", ProviderMethod: "bni_va", MinimumAmount: 1},
-		{Code: "BRI_VA", Name: "BRI Virtual Account", Category: "VIRTUAL_ACCOUNT", ProviderMethod: "bri_va", MinimumAmount: 1},
-		{Code: "CIMB_VA", Name: "CIMB Virtual Account", Category: "VIRTUAL_ACCOUNT", ProviderMethod: "cimb_va", MinimumAmount: 1},
-		{Code: "PERMATA_VA", Name: "Permata Virtual Account", Category: "VIRTUAL_ACCOUNT", ProviderMethod: "permata_va", MinimumAmount: 1},
-		{Code: "ECHANNEL", Name: "Mandiri Bill Payment", Category: "VIRTUAL_ACCOUNT", ProviderMethod: "echannel", MinimumAmount: 1},
+		{Code: "BRI_VA", Name: "BRI Virtual Account", Category: "VIRTUAL_ACCOUNT", ProviderMethod: "bri_va", MinimumAmount: 1, MaximumAmount: 20_000_000_000},
+		{Code: "CIMB_VA", Name: "CIMB Virtual Account", Category: "VIRTUAL_ACCOUNT", ProviderMethod: "cimb_va", MinimumAmount: 1, MaximumAmount: 250_000_000},
+		{Code: "PERMATA_VA", Name: "Permata Virtual Account", Category: "VIRTUAL_ACCOUNT", ProviderMethod: "permata_va", MinimumAmount: 1, MaximumAmount: 9_999_999_999},
+		{Code: "ECHANNEL", Name: "Mandiri Bill Payment", Category: "VIRTUAL_ACCOUNT", ProviderMethod: "echannel", MinimumAmount: 1, MaximumAmount: 50_000_000_000},
 		{Code: "BSI_VA", Name: "BSI Virtual Account", Category: "VIRTUAL_ACCOUNT", ProviderMethod: "bsi_va", MinimumAmount: 1_000},
-		{Code: "SEABANK_VA", Name: "SeaBank Virtual Account", Category: "VIRTUAL_ACCOUNT", ProviderMethod: "seabank_va", MinimumAmount: 10_000},
-		{Code: "CREDIT_CARD", Name: "Kartu Kredit", Category: "CREDIT_CARD", ProviderMethod: "credit_card", MinimumAmount: 10_000},
-		{Code: "ALFAMART", Name: "Alfamart", Category: "RETAIL", ProviderMethod: "alfamart", MinimumAmount: 1},
-		{Code: "INDOMARET", Name: "Indomaret", Category: "RETAIL", ProviderMethod: "indomaret", MinimumAmount: 10_000},
+		{Code: "SEABANK_VA", Name: "SeaBank Virtual Account", Category: "VIRTUAL_ACCOUNT", ProviderMethod: "seabank_va", MinimumAmount: 10_000, MaximumAmount: 100_000_000},
+		{Code: "CREDIT_CARD", Name: "Kartu Kredit", Category: "CREDIT_CARD", ProviderMethod: "credit_card", MinimumAmount: 10_000, MaximumAmount: 999_999_999},
+		{Code: "ALFAMART", Name: "Alfamart", Category: "RETAIL", ProviderMethod: "alfamart", MinimumAmount: 1, MaximumAmount: 2_500_000},
+		{Code: "INDOMARET", Name: "Indomaret", Category: "RETAIL", ProviderMethod: "indomaret", MinimumAmount: 10_000, MaximumAmount: 5_000_000},
 	}
 
 	for index := range methods {
@@ -190,25 +192,48 @@ func defaultMidtransMethods() []MidtransMethod {
 
 func defaultMidtransFeeRules() map[string]MidtransFeeRule {
 	return map[string]MidtransFeeRule{
-		MidtransQRISMethod: {PercentFee: 0.7, Configured: true},
-		"gopay":            {PercentFee: 2, Configured: true},
-		"dana":             {PercentFee: 1.5, Configured: true},
-		"ovo":              {PercentFee: 1.5, Configured: true},
-		"shopeepay":        {PercentFee: 2, Configured: true},
-		"bca_va":           {FlatFee: 4_000, Configured: true},
-		"bni_va":           {FlatFee: 4_000, Configured: true},
-		"bri_va":           {FlatFee: 4_000, Configured: true},
-		"cimb_va":          {FlatFee: 4_000, Configured: true},
-		"permata_va":       {FlatFee: 4_000, Configured: true},
-		"echannel":         {FlatFee: 4_000, Configured: true},
-		"bsi_va":           {FlatFee: 4_000, Configured: true},
-		"seabank_va":       {FlatFee: 4_000, Configured: true},
-		"credit_card":      {FlatFee: 2_000, PercentFee: 2.9, Configured: true},
-		"google_pay":       {FlatFee: 2_000, PercentFee: 2.9, Configured: true},
-		"akulaku":          {PercentFee: 1.7, Configured: true},
-		"kredivo":          {PercentFee: 2, Configured: true},
-		"alfamart":         {FlatFee: 5_000, VATIncluded: true, Configured: true},
-		"indomaret":        {FlatFee: 5_000, VATIncluded: true, Configured: true},
+		MidtransQRISMethod: {
+			PercentFee: 0.7, Configured: true,
+			RequiresProductionOverride: true,
+		},
+		"gopay": {
+			PercentFee: 2, Configured: true,
+			RequiresProductionOverride: true,
+		},
+		"dana": {
+			PercentFee: 1.5, Configured: true,
+			RequiresProductionOverride: true,
+		},
+		"ovo": {
+			PercentFee: 1.5, Configured: true,
+			RequiresProductionOverride: true,
+		},
+		"shopeepay": {
+			PercentFee: 2, Configured: true,
+			RequiresProductionOverride: true,
+		},
+		"bca_va": {
+			FlatFee: 4_000, Configured: true,
+			RequiresProductionOverride: true,
+		},
+		"bni_va":      {FlatFee: 4_000, Configured: true},
+		"bri_va":      {FlatFee: 4_000, Configured: true},
+		"cimb_va":     {FlatFee: 4_000, Configured: true},
+		"permata_va":  {FlatFee: 4_000, Configured: true},
+		"echannel":    {FlatFee: 4_000, Configured: true},
+		"bsi_va":      {FlatFee: 4_000, Configured: true},
+		"seabank_va":  {FlatFee: 4_000, Configured: true},
+		"credit_card": {FlatFee: 2_000, PercentFee: 2.9, Configured: true},
+		"google_pay":  {FlatFee: 2_000, PercentFee: 2.9, Configured: true},
+		"akulaku":     {PercentFee: 1.7, Configured: true},
+		"kredivo":     {PercentFee: 2, Configured: true},
+		"alfamart": {
+			FlatFee: 5_000, VATIncluded: true, Configured: true,
+		},
+		"indomaret": {
+			FlatFee: 5_000, VATIncluded: true, Configured: true,
+			RequiresProductionOverride: true,
+		},
 	}
 }
 
@@ -253,6 +278,11 @@ func LoadMidtransConfig() (MidtransConfig, error) {
 			}
 
 			rule := config.FeeRules[method]
+			hasExplicitFeeOverride := override.FlatFee != nil ||
+				override.Flat != nil ||
+				override.PercentFee != nil ||
+				override.Percent != nil ||
+				override.VATIncluded != nil
 			if override.FlatFee != nil {
 				rule.FlatFee = *override.FlatFee
 			} else if override.Flat != nil {
@@ -265,6 +295,9 @@ func LoadMidtransConfig() (MidtransConfig, error) {
 			}
 			if override.VATIncluded != nil {
 				rule.VATIncluded = *override.VATIncluded
+			}
+			if hasExplicitFeeOverride {
+				rule.Overridden = true
 			}
 			if rule.FlatFee < 0 || rule.PercentFee < 0 {
 				return MidtransConfig{}, fmt.Errorf("fee Midtrans %s tidak boleh negatif", method)
@@ -298,6 +331,15 @@ func LoadMidtransConfig() (MidtransConfig, error) {
 			}
 			if method.MinimumAmount < 0 || method.MaximumAmount < 0 {
 				return MidtransConfig{}, fmt.Errorf("limit Midtrans %s tidak boleh negatif", method.ProviderMethod)
+			}
+		}
+	}
+
+	if runtimeConfig.Mode == "production" {
+		for method, rule := range config.FeeRules {
+			if rule.RequiresProductionOverride && !rule.Overridden {
+				rule.Configured = false
+				config.FeeRules[method] = rule
 			}
 		}
 	}

@@ -120,6 +120,41 @@ const MIDTRANS_PAYMENT_LOGOS: PaymentLogoMethod[] = [
 const paymentLogoSettingKey = (providerMethod: string) =>
   `${PAYMENT_LOGO_SETTING_PREFIX}${providerMethod}`;
 
+const isValidPaymentLogoOverride = (value: string) => {
+  const normalized = value.trim();
+  if (!normalized) return true;
+
+  if (normalized.startsWith("/")) {
+    return (
+      !normalized.startsWith("//") &&
+      !normalized.includes("\\") &&
+      !normalized.includes("..")
+    );
+  }
+
+  try {
+    const parsed = new URL(normalized);
+    return parsed.protocol === "https:" && Boolean(parsed.hostname);
+  } catch {
+    return false;
+  }
+};
+
+const handlePaymentLogoImageError = (
+  event: React.SyntheticEvent<HTMLImageElement>,
+  defaultUrl: string,
+) => {
+  const image = event.currentTarget;
+
+  if (image.dataset.fallbackApplied === "true") {
+    image.style.display = "none";
+    return;
+  }
+
+  image.dataset.fallbackApplied = "true";
+  image.src = defaultUrl;
+};
+
 // ✨ PREMIUM GLASSMORPHISM COMPONENT ✨
 const CardBase = ({
   children,
@@ -227,6 +262,16 @@ export default function SettingsPage() {
 
   const handleSavePaymentLogos = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    const invalidMethod = MIDTRANS_PAYMENT_LOGOS.find((method) => {
+      const value = paymentLogos[method.providerMethod] || "";
+      return !isValidPaymentLogoOverride(value);
+    });
+    if (invalidMethod) {
+      alert(`${invalidMethod.name}: gunakan path lokal /... atau URL https://`);
+      return;
+    }
+
     setSavingPaymentLogos(true);
 
     try {
@@ -470,15 +515,29 @@ export default function SettingsPage() {
                         <div className="relative flex h-14 w-14 shrink-0 items-center justify-center">
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img
+                            key={`glow-${previewUrl}`}
                             src={previewUrl}
                             alt=""
                             aria-hidden="true"
+                            onError={(event) =>
+                              handlePaymentLogoImageError(
+                                event,
+                                method.defaultUrl,
+                              )
+                            }
                             className="pointer-events-none absolute h-12 w-12 scale-125 object-contain opacity-30 blur-[9px]"
                           />
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img
+                            key={`main-${previewUrl}`}
                             src={previewUrl}
                             alt={`${method.name} preview`}
+                            onError={(event) =>
+                              handlePaymentLogoImageError(
+                                event,
+                                method.defaultUrl,
+                              )
+                            }
                             className="relative z-10 h-12 w-12 object-contain"
                           />
                         </div>
