@@ -477,6 +477,11 @@ export default function GameDetailClient ({ slug }: { slug: string }) {
   const productAmountLabel = selectedProduct
     ? formatIDR(productAmount)
     : 'Belum tersedia'
+  const customerSurcharge =
+    selectedPaymentMethod?.customer_surcharge ?? 0
+  const customerSurchargeLabel = selectedPaymentMethod
+    ? formatIDR(customerSurcharge)
+    : 'Belum tersedia'
   const totalLabel = selectedPaymentMethod
     ? formatIDR(selectedPaymentMethod.total_amount)
     : selectedProduct
@@ -796,6 +801,8 @@ export default function GameDetailClient ({ slug }: { slug: string }) {
                   )}
                   productAmountLabel={productAmountLabel}
                   paymentMethodLabel={paymentMethodLabel}
+                  customerSurchargeLabel={customerSurchargeLabel}
+                  hasCustomerSurcharge={customerSurcharge > 0}
                   totalLabel={totalLabel}
                   onCheckout={handleCheckout}
                 />
@@ -816,6 +823,8 @@ export default function GameDetailClient ({ slug }: { slug: string }) {
                   )}
                   productAmountLabel={productAmountLabel}
                   paymentMethodLabel={paymentMethodLabel}
+                  customerSurchargeLabel={customerSurchargeLabel}
+                  hasCustomerSurcharge={customerSurcharge > 0}
                   totalLabel={totalLabel}
                   onCheckout={handleCheckout}
                 />

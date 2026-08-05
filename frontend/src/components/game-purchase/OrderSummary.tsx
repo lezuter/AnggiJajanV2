@@ -8,6 +8,8 @@ interface OrderSummaryProps {
   rows: string[][]
   productAmountLabel: string
   paymentMethodLabel: string
+  customerSurchargeLabel: string
+  hasCustomerSurcharge: boolean
   totalLabel: string
   onCheckout: () => void
 }
@@ -20,6 +22,8 @@ export default function OrderSummary ({
   rows,
   productAmountLabel,
   paymentMethodLabel,
+  customerSurchargeLabel,
+  hasCustomerSurcharge,
   totalLabel,
   onCheckout
 }: OrderSummaryProps) {
@@ -62,6 +66,16 @@ export default function OrderSummary ({
         <div className='flex items-center justify-between gap-4 text-sm'>
           <dt className='text-white/[0.44]'>Pembayaran</dt>
           <dd className='text-right text-white/[0.72]'>{paymentMethodLabel}</dd>
+        </div>
+        <div className='flex items-center justify-between gap-4 text-sm'>
+          <dt className='text-white/[0.44]'>Biaya metode</dt>
+          <dd className={`text-right ${
+            hasCustomerSurcharge
+              ? 'font-medium text-amber-200/[0.82]'
+              : 'text-emerald-300/[0.68]'
+          }`}>
+            {customerSurchargeLabel}
+          </dd>
         </div>
         <div className='flex items-end justify-between gap-4 border-t border-white/[0.08] pt-4'>
           <dt className='font-mono text-[10px] uppercase tracking-[0.1em] text-white/[0.48]'>

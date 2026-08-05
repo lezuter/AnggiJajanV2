@@ -133,55 +133,176 @@ func methodByProvider(
 	return midtransPaymentMethodOption{}
 }
 
+func TestCustomerSurchargeWorthinessGuard(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		basePrice  float64
+		surcharge  float64
+		maxPercent float64
+		want       bool
+	}{
+		{
+			name:      "zero surcharge",
+			basePrice: 1_500, surcharge: 0, maxPercent: 30, want: true,
+		},
+		{
+			name:      "fee larger than cheap product",
+			basePrice: 1_500, surcharge: 3_000, maxPercent: 30, want: false,
+		},
+		{
+			name:      "small relative credit card fee",
+			basePrice: 4_123_874, surcharge: 45_950, maxPercent: 30, want: true,
+		},
+		{
+			name:      "exact threshold",
+			basePrice: 10_000, surcharge: 3_000, maxPercent: 30, want: true,
+		},
+		{
+			name:      "above threshold",
+			basePrice: 10_000, surcharge: 3_001, maxPercent: 30, want: false,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			got := isCustomerSurchargeWorthwhile(
+				test.basePrice,
+				test.surcharge,
+				test.maxPercent,
+			)
+			if got != test.want {
+				t.Fatalf(
+					"worthiness(%v, %v, %v) = %v, want %v",
+					test.basePrice,
+					test.surcharge,
+					test.maxPercent,
+					got,
+					test.want,
+				)
+			}
+		})
+	}
+}
+
 func TestBuildMidtransPaymentQuoteCheapProduct(t *testing.T) {
 	activation := configureMidtransQuoteTest(
 		t,
 		"other_qris,dana,ovo,gopay,bca_va,seabank_va,bni_va",
 	)
+	capital := 8_000.0
 
-	quote, err := buildMidtransPaymentQuote(models.Product{Price: 8_000}, activation)
+	quote, err := buildMidtransPaymentQuote(
+		models.Product{Price: capital},
+		activation,
+	)
 	if err != nil {
 		t.Fatalf("buildMidtransPaymentQuote() error = %v", err)
 	}
 	if quote.PaymentProvider != "midtrans" {
 		t.Fatalf("payment provider = %q", quote.PaymentProvider)
 	}
-	if quote.StartingPrice-quote.Methods[0].EstimatedFee < 0 {
-		t.Fatal("unexpected negative quote")
-	}
+
+	requiredMerchantNet, minimumRetainedProfit :=
+		calculateMidtransRetentionTarget(
+			capital,
+			quote.ProductAmount,
+			defaultPaymentSurchargeProfitRetentionPercent,
+		)
 
 	qris := methodByProvider(t, quote, "other_qris")
 	if !qris.Enabled || qris.RecommendationRank != 1 {
-		t.Fatalf("QRIS = enabled %v rank %d", qris.Enabled, qris.RecommendationRank)
+		t.Fatalf(
+			"QRIS = enabled %v rank %d",
+			qris.Enabled,
+			qris.RecommendationRank,
+		)
 	}
 	if qris.TotalAmount-qris.EstimatedFee < quote.ProductAmount {
-		t.Fatalf("QRIS gross-up is unsafe: total %v fee %v target %v", qris.TotalAmount, qris.EstimatedFee, quote.ProductAmount)
+		t.Fatalf(
+			"QRIS gross-up is unsafe: total %v fee %v target %v",
+			qris.TotalAmount,
+			qris.EstimatedFee,
+			quote.ProductAmount,
+		)
 	}
 
 	dana := methodByProvider(t, quote, "dana")
 	if !dana.Enabled || dana.RecommendationRank != 2 {
-		t.Fatalf("lowest-fee enabled e-wallet = enabled %v rank %d", dana.Enabled, dana.RecommendationRank)
+		t.Fatalf(
+			"second cheapest method = enabled %v rank %d",
+			dana.Enabled,
+			dana.RecommendationRank,
+		)
 	}
 
 	for _, method := range quote.Methods {
-		if method.Enabled && method.TotalAmount != quote.StartingPrice {
-			t.Fatalf("enabled method %s total %v != starting price %v", method.ProviderMethod, method.TotalAmount, quote.StartingPrice)
+		if !method.Enabled {
+			continue
 		}
-		if method.CustomerSurcharge != 0 || method.ServiceFee != 0 {
-			t.Fatalf("customer surcharge must be zero for %s", method.ProviderMethod)
+		if method.TotalAmount < quote.StartingPrice {
+			t.Fatalf(
+				"enabled method %s total %v below starting price %v",
+				method.ProviderMethod,
+				method.TotalAmount,
+				quote.StartingPrice,
+			)
+		}
+		if method.CustomerSurcharge !=
+			method.TotalAmount-quote.StartingPrice {
+			t.Fatalf(
+				"method %s surcharge %v does not match total delta",
+				method.ProviderMethod,
+				method.CustomerSurcharge,
+			)
+		}
+		if method.ServiceFee != method.CustomerSurcharge {
+			t.Fatalf(
+				"method %s service fee %v != surcharge %v",
+				method.ProviderMethod,
+				method.ServiceFee,
+				method.CustomerSurcharge,
+			)
+		}
+		if method.TotalAmount-method.EstimatedFee < requiredMerchantNet {
+			t.Fatalf(
+				"method %s breaks retained-profit floor: total=%v fee=%v required=%v",
+				method.ProviderMethod,
+				method.TotalAmount,
+				method.EstimatedFee,
+				requiredMerchantNet,
+			)
+		}
+		if method.EstimatedNetProfit < minimumRetainedProfit {
+			t.Fatalf(
+				"method %s retained profit %v below minimum %v",
+				method.ProviderMethod,
+				method.EstimatedNetProfit,
+				minimumRetainedProfit,
+			)
 		}
 	}
 
 	for _, providerMethod := range []string{"bca_va", "seabank_va"} {
 		method := methodByProvider(t, quote, providerMethod)
-		if method.Enabled || method.DisabledReason != "Minimum transaksi Rp10.000" {
-			t.Fatalf("%s = enabled %v reason %q", providerMethod, method.Enabled, method.DisabledReason)
+		if method.Enabled ||
+			method.DisabledReason != "Minimum transaksi Rp10.000" {
+			t.Fatalf(
+				"%s = enabled %v reason %q",
+				providerMethod,
+				method.Enabled,
+				method.DisabledReason,
+			)
 		}
 	}
 
 	bni := methodByProvider(t, quote, "bni_va")
-	if bni.Enabled || bni.DisabledReason != "Biaya metode melebihi margin produk" {
-		t.Fatalf("expensive VA should be disabled by margin: %#v", bni)
+	if bni.Enabled ||
+		!strings.Contains(
+			bni.DisabledReason,
+			"Biaya metode terlalu besar",
+		) {
+		t.Fatalf(
+			"expensive VA should be disabled when surcharge is not worth it: %#v",
+			bni,
+		)
 	}
 }
 
@@ -189,8 +310,9 @@ func TestBuildMidtransPaymentQuoteUsesProductGroupMarkup(t *testing.T) {
 	activation := configureMidtransQuoteTest(t, "other_qris,dana")
 	catalogMarkup := 2.0
 	groupMarkup := 3.0
+	capital := 10_000.0
 	product := models.Product{
-		Price: 10_000,
+		Price: capital,
 		Catalog: models.Catalog{
 			MarkupPercent: &catalogMarkup,
 		},
@@ -206,12 +328,147 @@ func TestBuildMidtransPaymentQuoteUsesProductGroupMarkup(t *testing.T) {
 	if quote.ProductAmount != 10_300 {
 		t.Fatalf("product amount = %v, want 10300", quote.ProductAmount)
 	}
+
+	requiredMerchantNet, minimumRetainedProfit :=
+		calculateMidtransRetentionTarget(
+			capital,
+			quote.ProductAmount,
+			defaultPaymentSurchargeProfitRetentionPercent,
+		)
+
 	for _, method := range quote.Methods {
-		if method.TotalAmount != quote.StartingPrice {
-			t.Fatalf("method %s total %v != starting price %v", method.ProviderMethod, method.TotalAmount, quote.StartingPrice)
+		if method.TotalAmount < quote.StartingPrice {
+			t.Fatalf(
+				"method %s total %v below starting price %v",
+				method.ProviderMethod,
+				method.TotalAmount,
+				quote.StartingPrice,
+			)
 		}
-		if method.CustomerSurcharge != 0 {
-			t.Fatalf("method %s customer surcharge = %v, want 0", method.ProviderMethod, method.CustomerSurcharge)
+		if method.CustomerSurcharge !=
+			method.TotalAmount-quote.StartingPrice {
+			t.Fatalf(
+				"method %s customer surcharge = %v, total delta = %v",
+				method.ProviderMethod,
+				method.CustomerSurcharge,
+				method.TotalAmount-quote.StartingPrice,
+			)
+		}
+		if method.Enabled &&
+			method.TotalAmount-method.EstimatedFee < requiredMerchantNet {
+			t.Fatalf(
+				"method %s does not preserve the retained-profit floor",
+				method.ProviderMethod,
+			)
+		}
+		if method.Enabled &&
+			method.EstimatedNetProfit < minimumRetainedProfit {
+			t.Fatalf(
+				"method %s retained profit %v below %v",
+				method.ProviderMethod,
+				method.EstimatedNetProfit,
+				minimumRetainedProfit,
+			)
+		}
+	}
+}
+
+func TestBuildMidtransPaymentQuoteAppliesOnlyRequiredSurcharge(t *testing.T) {
+	activation := configureMidtransQuoteTest(
+		t,
+		"other_qris,dana,ovo,gopay,bca_va",
+	)
+	capital := 2_000_000.0
+
+	quote, err := buildMidtransPaymentQuote(
+		models.Product{Price: capital},
+		activation,
+	)
+	if err != nil {
+		t.Fatalf("buildMidtransPaymentQuote() error = %v", err)
+	}
+
+	requiredMerchantNet, minimumRetainedProfit :=
+		calculateMidtransRetentionTarget(
+			capital,
+			quote.ProductAmount,
+			defaultPaymentSurchargeProfitRetentionPercent,
+		)
+	targetProductProfit := quote.ProductAmount - capital
+
+	qris := methodByProvider(t, quote, "other_qris")
+	if !qris.Enabled ||
+		qris.CustomerSurcharge != 0 ||
+		qris.TotalAmount != quote.StartingPrice {
+		t.Fatalf(
+			"QRIS must remain the zero-surcharge baseline: %#v",
+			qris,
+		)
+	}
+
+	for _, providerMethod := range []string{"dana", "ovo", "bca_va"} {
+		method := methodByProvider(t, quote, providerMethod)
+		if !method.Enabled || method.CustomerSurcharge != 0 {
+			t.Fatalf(
+				"%s fee should be fully covered by the 30%% subsidy allowance: %#v",
+				providerMethod,
+				method,
+			)
+		}
+		if method.EstimatedNetProfit < minimumRetainedProfit {
+			t.Fatalf(
+				"%s retained profit %v below %v",
+				providerMethod,
+				method.EstimatedNetProfit,
+				minimumRetainedProfit,
+			)
+		}
+	}
+
+	gopay := methodByProvider(t, quote, "gopay")
+	if !gopay.Enabled || gopay.CustomerSurcharge <= 0 {
+		t.Fatalf(
+			"GoPay should charge only the amount beyond merchant subsidy: %#v",
+			gopay,
+		)
+	}
+	if gopay.TotalAmount-gopay.EstimatedFee < requiredMerchantNet {
+		t.Fatalf(
+			"GoPay still breaks retained-profit floor: %#v",
+			gopay,
+		)
+	}
+	if gopay.EstimatedNetProfit < minimumRetainedProfit {
+		t.Fatalf(
+			"GoPay retained profit %v below %v",
+			gopay.EstimatedNetProfit,
+			minimumRetainedProfit,
+		)
+	}
+	if gopay.EstimatedNetProfit >= targetProductProfit {
+		t.Fatalf(
+			"GoPay test must demonstrate partial merchant subsidy: %#v",
+			gopay,
+		)
+	}
+
+	for _, method := range quote.Methods {
+		if !method.Enabled {
+			continue
+		}
+		if method.CustomerSurcharge !=
+			method.TotalAmount-quote.StartingPrice {
+			t.Fatalf(
+				"%s surcharge does not equal final total delta",
+				method.ProviderMethod,
+			)
+		}
+		if method.EstimatedNetProfit < minimumRetainedProfit {
+			t.Fatalf(
+				"%s reduced retained profit below policy: %#v",
+				method.ProviderMethod,
+				method,
+			)
 		}
 	}
 }
@@ -374,6 +631,37 @@ func TestBuildMidtransSnapPayloadUsesRebuiltQuote(t *testing.T) {
 	t.Log(string(encoded))
 }
 
+func TestBuildMidtransSnapPayloadUsesSurchargedMethodTotal(t *testing.T) {
+	activation := configureMidtransQuoteTest(t, "other_qris,gopay")
+	product := models.Product{Code: "SKU-GOPAY", Name: "Large Product", Price: 2_000_000}
+	quote, err := buildMidtransPaymentQuote(product, activation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	selected, found := findMidtransPaymentQuote(quote, "v1:midtrans:gopay")
+	if !found || !selected.Enabled || selected.CustomerSurcharge <= 0 {
+		t.Fatalf("surcharged GoPay quote unavailable: %#v", selected)
+	}
+
+	payload := buildMidtransSnapPayload(
+		"INV-GOPAY",
+		product,
+		selected,
+		models.CheckoutRequest{CustomerPhone: "12345"},
+	)
+
+	if payload.TransactionDetails.GrossAmount != int64(selected.TotalAmount) {
+		t.Fatalf("gross amount = %d, want selected total %v", payload.TransactionDetails.GrossAmount, selected.TotalAmount)
+	}
+	if payload.TransactionDetails.GrossAmount <= int64(quote.StartingPrice) {
+		t.Fatalf("surcharged gross amount %d must exceed starting price %v", payload.TransactionDetails.GrossAmount, quote.StartingPrice)
+	}
+	if len(payload.ItemDetails) != 1 ||
+		payload.ItemDetails[0].Price != payload.TransactionDetails.GrossAmount {
+		t.Fatalf("item details do not match surcharged gross amount: %#v", payload)
+	}
+}
+
 func TestCreateMidtransSnapUsesBasicAuthAndSelectedPayment(t *testing.T) {
 	var received midtransSnapRequest
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -458,14 +746,66 @@ func TestMidtransFailureCannotDowngradePaidTransaction(t *testing.T) {
 	}
 }
 
-func TestMidtransRecommendationDoesNotDependOnWalletBrand(t *testing.T) {
+func TestMidtransRecommendationUsesLowestCustomerTotal(t *testing.T) {
 	options := []midtransPaymentMethodOption{
-		{Name: "Wallet Mahal", Category: "E_WALLET", Enabled: true, EstimatedFee: 200},
-		{Name: "QRIS", Category: "QRIS", Enabled: true, EstimatedFee: 70},
-		{Name: "Wallet Hemat", Category: "E_WALLET", Enabled: true, EstimatedFee: 100},
+		{
+			Name: "Wallet Mahal", Category: "E_WALLET", Enabled: true,
+			TotalAmount: 103_000, CustomerSurcharge: 3_000, EstimatedFee: 2_000,
+		},
+		{
+			Name: "QRIS", Category: "QRIS", Enabled: true,
+			TotalAmount: 100_000, CustomerSurcharge: 0, EstimatedFee: 777,
+		},
+		{
+			Name: "Wallet Hemat", Category: "E_WALLET", Enabled: true,
+			TotalAmount: 101_500, CustomerSurcharge: 1_500, EstimatedFee: 1_200,
+		},
 	}
 	ranks := chooseMidtransRecommendations(options)
 	if len(ranks) != 2 || ranks[0] != 1 || ranks[1] != 2 {
+		t.Fatalf("recommendation indexes = %v", ranks)
+	}
+}
+
+func TestMidtransRecommendationPrefersQRISOnlyWhenCustomerTotalTies(t *testing.T) {
+	options := []midtransPaymentMethodOption{
+		{
+			Name: "Wallet A", ProviderMethod: "wallet_a", Category: "E_WALLET",
+			Enabled: true, TotalAmount: 100_000, CustomerSurcharge: 0,
+			EstimatedFee: 777,
+		},
+		{
+			Name: "QRIS", ProviderMethod: "other_qris", Category: "QRIS",
+			Enabled: true, TotalAmount: 100_000, CustomerSurcharge: 0,
+			EstimatedFee: 777,
+		},
+		{
+			Name: "Wallet B", ProviderMethod: "wallet_b", Category: "E_WALLET",
+			Enabled: true, TotalAmount: 101_000, CustomerSurcharge: 1_000,
+			EstimatedFee: 1_200,
+		},
+	}
+	ranks := chooseMidtransRecommendations(options)
+	if len(ranks) != 2 || ranks[0] != 1 || ranks[1] != 0 {
+		t.Fatalf("recommendation indexes = %v", ranks)
+	}
+}
+
+func TestMidtransRecommendationCanBeatQRISWhenActuallyCheaper(t *testing.T) {
+	options := []midtransPaymentMethodOption{
+		{
+			Name: "Wallet Promo", ProviderMethod: "wallet_promo",
+			Category: "E_WALLET", Enabled: true, TotalAmount: 99_000,
+			CustomerSurcharge: 0, EstimatedFee: 500,
+		},
+		{
+			Name: "QRIS", ProviderMethod: "other_qris", Category: "QRIS",
+			Enabled: true, TotalAmount: 100_000, CustomerSurcharge: 0,
+			EstimatedFee: 777,
+		},
+	}
+	ranks := chooseMidtransRecommendations(options)
+	if len(ranks) != 2 || ranks[0] != 0 || ranks[1] != 1 {
 		t.Fatalf("recommendation indexes = %v", ranks)
 	}
 }

@@ -63,6 +63,14 @@ const CATEGORY_ORDER = [
 const categoryLabel = (category: string) =>
   CATEGORY_LABELS[category] || category.replaceAll('_', ' ')
 
+const formatPaymentAmount = (amount: number) =>
+  `Rp${amount.toLocaleString('id-ID')}`
+
+const paymentCostDescription = (method: PaymentMethodOption) =>
+  method.customer_surcharge > 0
+    ? `Biaya metode +${formatPaymentAmount(method.customer_surcharge)}`
+    : 'Tanpa biaya tambahan'
+
 function SelectionMark ({ selected }: { selected: boolean }) {
   return (
     <span
@@ -88,11 +96,29 @@ function SelectionMark ({ selected }: { selected: boolean }) {
 
 function GenericQRISLogo () {
   return (
-    <span className='flex h-11 w-11 shrink-0 items-center justify-center rounded-[13px] border border-white/[0.08] bg-white text-black'>
+    <span
+      data-ui='payment-logo-fading-glow'
+      className='relative flex h-11 w-11 shrink-0 items-center justify-center'
+    >
+      <span
+        aria-hidden='true'
+        className='absolute inset-[7px] rounded-full bg-white/[0.28] blur-[11px]'
+      />
       <svg
         viewBox='0 0 24 24'
         fill='none'
-        className='h-7 w-7'
+        className='absolute h-8 w-8 scale-110 text-white/[0.28] blur-[7px]'
+        aria-hidden='true'
+      >
+        <path
+          d='M4 4h6v6H4V4Zm10 0h6v6h-6V4ZM4 14h6v6H4v-6Zm11 0h2v2h-2v-2Zm3 0h2v6h-2v-6Zm-3 4h2v2h-2v-2Zm-3-6h2v2h-2v-2Zm0 3h2v5h-2v-5Z'
+          fill='currentColor'
+        />
+      </svg>
+      <svg
+        viewBox='0 0 24 24'
+        fill='none'
+        className='relative z-10 h-7 w-7 text-white/[0.92] drop-shadow-[0_2px_8px_rgba(255,255,255,0.22)]'
         aria-hidden='true'
       >
         <path
@@ -113,19 +139,32 @@ function PaymentLogo ({
 }) {
   if (!imageUrl) {
     return (
-      <span className='flex h-11 w-11 shrink-0 items-center justify-center rounded-[13px] border border-white/[0.08] bg-white font-mono text-[10px] font-semibold text-black/[0.58]'>
-        {code}
+      <span className='relative flex h-11 w-11 shrink-0 items-center justify-center'>
+        <span
+          aria-hidden='true'
+          className='absolute inset-[7px] rounded-full bg-white/[0.14] blur-[11px]'
+        />
+        <span className='relative z-10 max-w-[44px] truncate font-mono text-[9px] font-semibold text-white/[0.52] drop-shadow-[0_2px_8px_rgba(255,255,255,0.12)]'>
+          {code}
+        </span>
       </span>
     )
   }
 
   return (
-    <span className='flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-[13px] border border-white/[0.08] bg-white'>
+    <span className='relative flex h-11 w-11 shrink-0 items-center justify-center'>
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src={imageUrl}
         alt=''
-        className='h-full w-full object-contain p-1.5'
+        aria-hidden='true'
+        className='pointer-events-none absolute h-10 w-10 scale-125 object-contain opacity-35 blur-[9px] saturate-150'
+      />
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={imageUrl}
+        alt=''
+        className='relative z-10 h-10 w-10 object-contain p-1 opacity-95 drop-shadow-[0_4px_12px_rgba(255,255,255,0.14)]'
       />
     </span>
   )
@@ -165,10 +204,17 @@ function RecommendationCard ({
           {method.name}
         </span>
         <span className='mt-1.5 block font-mono text-[8px] uppercase tracking-[0.1em] text-emerald-300/[0.64]'>
-          {option.rank === 1 ? 'Paling praktis' : 'Alternatif cepat'}
+          {option.rank === 1 ? 'Paling hemat' : 'Alternatif termurah'}
         </span>
         <span className='mt-1.5 block text-xs font-medium tabular-nums text-white/[0.72]'>
-          Total Rp{method.total_amount.toLocaleString('id-ID')}
+          Total {formatPaymentAmount(method.total_amount)}
+        </span>
+        <span className={`mt-1 block text-[10px] ${
+          method.customer_surcharge > 0
+            ? 'text-amber-200/[0.7]'
+            : 'text-emerald-300/[0.58]'
+        }`}>
+          {paymentCostDescription(method)}
         </span>
       </span>
 
@@ -212,7 +258,7 @@ function PaymentMethodCard ({
         </span>
         <span className='mt-1.5 block text-[10px] leading-4 text-white/[0.4]'>
           {method.enabled
-            ? `Total ${method.total_amount.toLocaleString('id-ID')}`
+            ? `Total ${formatPaymentAmount(method.total_amount)} · ${paymentCostDescription(method)}`
             : method.disabled_reason || 'Metode tidak tersedia.'}
         </span>
       </span>

@@ -29,9 +29,10 @@ type MidtransRuntimeConfig struct {
 }
 
 type MidtransFeeRule struct {
-	FlatFee    float64 `json:"flat_fee"`
-	PercentFee float64 `json:"percent_fee"`
-	Configured bool    `json:"-"`
+	FlatFee     float64 `json:"flat_fee"`
+	PercentFee  float64 `json:"percent_fee"`
+	VATIncluded bool    `json:"-"`
+	Configured  bool    `json:"-"`
 }
 
 type MidtransMethod struct {
@@ -51,10 +52,11 @@ type MidtransConfig struct {
 }
 
 type midtransFeeRuleOverride struct {
-	FlatFee    *float64 `json:"flat_fee"`
-	Flat       *float64 `json:"flat"`
-	PercentFee *float64 `json:"percent_fee"`
-	Percent    *float64 `json:"percent"`
+	FlatFee     *float64 `json:"flat_fee"`
+	Flat        *float64 `json:"flat"`
+	PercentFee  *float64 `json:"percent_fee"`
+	Percent     *float64 `json:"percent"`
+	VATIncluded *bool    `json:"vat_included"`
 }
 
 type midtransLimitOverride struct {
@@ -108,13 +110,62 @@ func ResolveMidtransRuntimeConfig() (MidtransRuntimeConfig, error) {
 	}, nil
 }
 
+// defaultMidtransLogoURL adalah fallback visual milik Anggijajan.
+func defaultMidtransLogoURL(providerMethod string) string {
+	switch strings.ToLower(strings.TrimSpace(providerMethod)) {
+	case MidtransQRISMethod:
+		return "/payment-logos/qris.svg"
+	case "gopay":
+		return "/payment-logos/gopay.svg"
+	case "dana":
+		return "/payment-logos/dana.svg"
+	case "ovo":
+		return "/payment-logos/ovo.svg"
+	case "shopeepay":
+		return "/payment-logos/shopeepay.svg"
+	case "google_pay":
+		return "/payment-logos/google-pay.svg"
+	case "akulaku":
+		return "/payment-logos/akulaku.svg"
+	case "kredivo":
+		return "/payment-logos/kredivo.svg"
+	case "bca_va":
+		return "/payment-logos/bca.svg"
+	case "bni_va":
+		return "/payment-logos/bni.svg"
+	case "bri_va":
+		return "/payment-logos/bri.svg"
+	case "cimb_va":
+		return "/payment-logos/cimb.svg"
+	case "permata_va":
+		return "/payment-logos/permata.svg"
+	case "echannel":
+		return "/payment-logos/mandiri.svg"
+	case "bsi_va":
+		return "/payment-logos/bsi.svg"
+	case "seabank_va":
+		return "/payment-logos/seabank.svg"
+	case "credit_card":
+		return "/payment-logos/credit-card.svg"
+	case "alfamart":
+		return "/payment-logos/alfamart.svg"
+	case "indomaret":
+		return "/payment-logos/indomaret.svg"
+	default:
+		return ""
+	}
+}
+
 func defaultMidtransMethods() []MidtransMethod {
-	return []MidtransMethod{
+	methods := []MidtransMethod{
 		{Code: "QRIS", Name: "QRIS", Category: "QRIS", ProviderMethod: MidtransQRISMethod, MinimumAmount: 1, MaximumAmount: 10_000_000},
 		{Code: "GOPAY", Name: "GoPay", Category: "E_WALLET", ProviderMethod: "gopay", MinimumAmount: 1},
 		{Code: "DANA", Name: "DANA", Category: "E_WALLET", ProviderMethod: "dana", MinimumAmount: 1},
 		{Code: "OVO", Name: "OVO", Category: "E_WALLET", ProviderMethod: "ovo", MinimumAmount: 1},
 		{Code: "SHOPEEPAY", Name: "ShopeePay", Category: "E_WALLET", ProviderMethod: "shopeepay", MinimumAmount: 1},
+		{Code: "GOOGLE_PAY", Name: "Google Pay", Category: "E_WALLET", ProviderMethod: "google_pay", MinimumAmount: 10_000, MaximumAmount: 999_999_999},
+		{Code: "AKULAKU", Name: "Akulaku PayLater", Category: "PAYLATER", ProviderMethod: "akulaku", MinimumAmount: 5_000},
+		{Code: "KREDIVO", Name: "Kredivo", Category: "PAYLATER", ProviderMethod: "kredivo", MinimumAmount: 1},
 		{Code: "BCA_VA", Name: "BCA Virtual Account", Category: "VIRTUAL_ACCOUNT", ProviderMethod: "bca_va", MinimumAmount: 10_000},
 		{Code: "BNI_VA", Name: "BNI Virtual Account", Category: "VIRTUAL_ACCOUNT", ProviderMethod: "bni_va", MinimumAmount: 1},
 		{Code: "BRI_VA", Name: "BRI Virtual Account", Category: "VIRTUAL_ACCOUNT", ProviderMethod: "bri_va", MinimumAmount: 1},
@@ -127,6 +178,14 @@ func defaultMidtransMethods() []MidtransMethod {
 		{Code: "ALFAMART", Name: "Alfamart", Category: "RETAIL", ProviderMethod: "alfamart", MinimumAmount: 1},
 		{Code: "INDOMARET", Name: "Indomaret", Category: "RETAIL", ProviderMethod: "indomaret", MinimumAmount: 10_000},
 	}
+
+	for index := range methods {
+		methods[index].ImageURL = defaultMidtransLogoURL(
+			methods[index].ProviderMethod,
+		)
+	}
+
+	return methods
 }
 
 func defaultMidtransFeeRules() map[string]MidtransFeeRule {
@@ -145,6 +204,11 @@ func defaultMidtransFeeRules() map[string]MidtransFeeRule {
 		"bsi_va":           {FlatFee: 4_000, Configured: true},
 		"seabank_va":       {FlatFee: 4_000, Configured: true},
 		"credit_card":      {FlatFee: 2_000, PercentFee: 2.9, Configured: true},
+		"google_pay":       {FlatFee: 2_000, PercentFee: 2.9, Configured: true},
+		"akulaku":          {PercentFee: 1.7, Configured: true},
+		"kredivo":          {PercentFee: 2, Configured: true},
+		"alfamart":         {FlatFee: 5_000, VATIncluded: true, Configured: true},
+		"indomaret":        {FlatFee: 5_000, VATIncluded: true, Configured: true},
 	}
 }
 
@@ -199,6 +263,9 @@ func LoadMidtransConfig() (MidtransConfig, error) {
 			} else if override.Percent != nil {
 				rule.PercentFee = *override.Percent
 			}
+			if override.VATIncluded != nil {
+				rule.VATIncluded = *override.VATIncluded
+			}
 			if rule.FlatFee < 0 || rule.PercentFee < 0 {
 				return MidtransConfig{}, fmt.Errorf("fee Midtrans %s tidak boleh negatif", method)
 			}
@@ -238,6 +305,15 @@ func LoadMidtransConfig() (MidtransConfig, error) {
 	return config, nil
 }
 
+func ceilMidtransFee(value float64) float64 {
+	// Hilangkan noise float64 sangat kecil sebelum pembulatan rupiah.
+	// Contoh: 1887.0000000000002 harus tetap menjadi Rp1.887,
+	// bukan naik menjadi Rp1.888.
+	const decimalPrecision = 1_000_000_000
+	normalized := math.Round(value*decimalPrecision) / decimalPrecision
+	return math.Ceil(normalized)
+}
+
 func (config MidtransConfig) EstimateFee(providerMethod string, amount float64) (float64, bool) {
 	rule, found := config.FeeRules[strings.ToLower(strings.TrimSpace(providerMethod))]
 	if !found || !rule.Configured {
@@ -245,8 +321,11 @@ func (config MidtransConfig) EstimateFee(providerMethod string, amount float64) 
 	}
 
 	feeBeforeVAT := rule.FlatFee + amount*rule.PercentFee/100
+	if rule.VATIncluded {
+		return ceilMidtransFee(feeBeforeVAT), true
+	}
 	feeWithVAT := feeBeforeVAT * (1 + config.FeeVATPercent/100)
-	return math.Ceil(feeWithVAT), true
+	return ceilMidtransFee(feeWithVAT), true
 }
 
 func (config MidtransConfig) StartingPrice(targetNet float64) (float64, error) {

@@ -15,6 +15,111 @@ const isSettingItem = (value: unknown): value is SettingItem => {
   return typeof item.key === "string" && typeof item.value === "string";
 };
 
+interface PaymentLogoMethod {
+  providerMethod: string;
+  name: string;
+  defaultUrl: string;
+}
+
+const PAYMENT_LOGO_SETTING_PREFIX = "payment_logo_midtrans_";
+
+const MIDTRANS_PAYMENT_LOGOS: PaymentLogoMethod[] = [
+  {
+    providerMethod: "other_qris",
+    name: "QRIS",
+    defaultUrl: "/payment-logos/qris.svg",
+  },
+  {
+    providerMethod: "gopay",
+    name: "GoPay",
+    defaultUrl: "/payment-logos/gopay.svg",
+  },
+  {
+    providerMethod: "dana",
+    name: "DANA",
+    defaultUrl: "/payment-logos/dana.svg",
+  },
+  { providerMethod: "ovo", name: "OVO", defaultUrl: "/payment-logos/ovo.svg" },
+  {
+    providerMethod: "shopeepay",
+    name: "ShopeePay",
+    defaultUrl: "/payment-logos/shopeepay.svg",
+  },
+  {
+    providerMethod: "google_pay",
+    name: "Google Pay",
+    defaultUrl: "/payment-logos/google-pay.svg",
+  },
+  {
+    providerMethod: "akulaku",
+    name: "Akulaku PayLater",
+    defaultUrl: "/payment-logos/akulaku.svg",
+  },
+  {
+    providerMethod: "kredivo",
+    name: "Kredivo",
+    defaultUrl: "/payment-logos/kredivo.svg",
+  },
+  {
+    providerMethod: "bca_va",
+    name: "BCA Virtual Account",
+    defaultUrl: "/payment-logos/bca.svg",
+  },
+  {
+    providerMethod: "bni_va",
+    name: "BNI Virtual Account",
+    defaultUrl: "/payment-logos/bni.svg",
+  },
+  {
+    providerMethod: "bri_va",
+    name: "BRI Virtual Account",
+    defaultUrl: "/payment-logos/bri.svg",
+  },
+  {
+    providerMethod: "cimb_va",
+    name: "CIMB Virtual Account",
+    defaultUrl: "/payment-logos/cimb.svg",
+  },
+  {
+    providerMethod: "permata_va",
+    name: "Permata Virtual Account",
+    defaultUrl: "/payment-logos/permata.svg",
+  },
+  {
+    providerMethod: "echannel",
+    name: "Mandiri Bill Payment",
+    defaultUrl: "/payment-logos/mandiri.svg",
+  },
+  {
+    providerMethod: "bsi_va",
+    name: "BSI Virtual Account",
+    defaultUrl: "/payment-logos/bsi.svg",
+  },
+  {
+    providerMethod: "seabank_va",
+    name: "SeaBank Virtual Account",
+    defaultUrl: "/payment-logos/seabank.svg",
+  },
+  {
+    providerMethod: "credit_card",
+    name: "Kartu Kredit",
+    defaultUrl: "/payment-logos/credit-card.svg",
+  },
+  {
+    providerMethod: "alfamart",
+    name: "Alfamart",
+    defaultUrl: "/payment-logos/alfamart.svg",
+  },
+  {
+    providerMethod: "indomaret",
+    name: "Indomaret",
+    defaultUrl: "/payment-logos/indomaret.svg",
+  },
+];
+
+const paymentLogoSettingKey = (providerMethod: string) =>
+  `${PAYMENT_LOGO_SETTING_PREFIX}${providerMethod}`;
+
 // ✨ PREMIUM GLASSMORPHISM COMPONENT ✨
 const CardBase = ({
   children,
@@ -37,6 +142,8 @@ export default function SettingsPage() {
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [savingPaymentLogos, setSavingPaymentLogos] = useState(false);
+  const [paymentLogos, setPaymentLogos] = useState<Record<string, string>>({});
 
   // State Cooldown Sync
   const [cooldown, setCooldown] = useState(0);
@@ -67,16 +174,33 @@ export default function SettingsPage() {
         const data: unknown = await res.json();
 
         if (Array.isArray(data)) {
+          const settingItems = data.filter(isSettingItem);
+
           setFormData((current) => {
             const newSettings = { ...current };
 
-            data.filter(isSettingItem).forEach((item) => {
+            settingItems.forEach((item) => {
               if (item.key === "margin_percent")
                 newSettings.margin_percent = item.value;
               if (item.key === "flat_fee") newSettings.flat_fee = item.value;
             });
 
             return newSettings;
+          });
+
+          setPaymentLogos(() => {
+            const logoSettings: Record<string, string> = {};
+
+            settingItems.forEach((item) => {
+              if (!item.key.startsWith(PAYMENT_LOGO_SETTING_PREFIX)) return;
+
+              const providerMethod = item.key.slice(
+                PAYMENT_LOGO_SETTING_PREFIX.length,
+              );
+              logoSettings[providerMethod] = item.value;
+            });
+
+            return logoSettings;
           });
         }
       }
@@ -100,6 +224,33 @@ export default function SettingsPage() {
       return () => clearTimeout(timer);
     }
   }, [cooldown]);
+
+  const handleSavePaymentLogos = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSavingPaymentLogos(true);
+
+    try {
+      const payload = Object.fromEntries(
+        MIDTRANS_PAYMENT_LOGOS.map((method) => [
+          paymentLogoSettingKey(method.providerMethod),
+          (paymentLogos[method.providerMethod] || "").trim(),
+        ]),
+      );
+
+      const response = await put("/admin/settings", payload);
+      if (!response.ok) {
+        throw new Error("Gagal menyimpan override logo pembayaran");
+      }
+
+      alert("Logo metode pembayaran berhasil disimpan.");
+    } catch (error: unknown) {
+      const message =
+        error instanceof Error ? error.message : "Kesalahan tidak diketahui";
+      alert(`Gagal menyimpan logo: ${message}`);
+    } finally {
+      setSavingPaymentLogos(false);
+    }
+  };
 
   // 🔥 4. SAVE & SYNC BERSIH
   const handleSaveAndAutoSync = async (e: React.FormEvent) => {
@@ -281,6 +432,110 @@ export default function SettingsPage() {
                       <span>Simpan & Sync Harga</span>
                     </>
                   )}
+                </button>
+              </div>
+            </form>
+          </CardBase>
+
+          {/* PAYMENT LOGO ADMIN CARD */}
+          <CardBase className="mt-8 p-8">
+            <div className="flex flex-col gap-3 border-b border-white/10 pb-5 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <h2 className="text-sm font-bold uppercase tracking-widest text-white">
+                  Logo metode pembayaran
+                </h2>
+                <p className="mt-2 max-w-2xl text-xs leading-5 text-slate-400">
+                  Kosongkan override untuk memakai badge lokal bawaan. Isi URL
+                  atau path aset untuk mengganti logo metode tertentu.
+                </p>
+              </div>
+              <span className="font-mono text-[9px] uppercase tracking-[0.12em] text-sky-300/60">
+                Midtrans · Hybrid
+              </span>
+            </div>
+
+            <form onSubmit={handleSavePaymentLogos} className="mt-6">
+              <div className="grid gap-4 lg:grid-cols-2">
+                {MIDTRANS_PAYMENT_LOGOS.map((method) => {
+                  const overrideValue =
+                    paymentLogos[method.providerMethod] || "";
+                  const previewUrl = overrideValue.trim() || method.defaultUrl;
+
+                  return (
+                    <div
+                      key={method.providerMethod}
+                      className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-4"
+                    >
+                      <div className="flex items-center gap-4">
+                        <div className="relative flex h-14 w-14 shrink-0 items-center justify-center">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={previewUrl}
+                            alt=""
+                            aria-hidden="true"
+                            className="pointer-events-none absolute h-12 w-12 scale-125 object-contain opacity-30 blur-[9px]"
+                          />
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={previewUrl}
+                            alt={`${method.name} preview`}
+                            className="relative z-10 h-12 w-12 object-contain"
+                          />
+                        </div>
+
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-semibold text-white">
+                            {method.name}
+                          </p>
+                          <p className="mt-1 font-mono text-[9px] uppercase tracking-[0.08em] text-slate-500">
+                            midtrans:{method.providerMethod}
+                          </p>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setPaymentLogos((current) => ({
+                              ...current,
+                              [method.providerMethod]: "",
+                            }))
+                          }
+                          className="rounded-lg border border-white/[0.08] px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-400 transition hover:border-white/[0.16] hover:text-white"
+                        >
+                          Default
+                        </button>
+                      </div>
+
+                      <input
+                        type="text"
+                        value={overrideValue}
+                        onChange={(event) =>
+                          setPaymentLogos((current) => ({
+                            ...current,
+                            [method.providerMethod]: event.target.value,
+                          }))
+                        }
+                        placeholder={method.defaultUrl}
+                        className="mt-4 w-full rounded-xl border border-white/[0.06] bg-black/20 px-4 py-3 font-mono text-[11px] text-sky-200 outline-none transition placeholder:text-slate-600 focus:border-sky-400/40 focus:bg-white/[0.035]"
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="mt-6 flex justify-end border-t border-white/[0.05] pt-6">
+                <button
+                  type="submit"
+                  disabled={savingPaymentLogos}
+                  className={`rounded-xl border px-6 py-3 text-xs font-bold uppercase tracking-widest transition ${
+                    savingPaymentLogos
+                      ? "cursor-not-allowed border-white/[0.05] bg-white/[0.02] text-slate-500"
+                      : "border-sky-400/30 bg-sky-400/10 text-sky-200 hover:border-sky-300/50 hover:bg-sky-400/15"
+                  }`}
+                >
+                  {savingPaymentLogos
+                    ? "Menyimpan logo..."
+                    : "Simpan logo pembayaran"}
                 </button>
               </div>
             </form>

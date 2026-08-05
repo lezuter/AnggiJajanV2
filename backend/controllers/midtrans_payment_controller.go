@@ -44,10 +44,13 @@ type midtransSnapTransactionDetails struct {
 }
 
 type midtransSnapItem struct {
-	ID       string `json:"id"`
-	Price    int64  `json:"price"`
-	Quantity int    `json:"quantity"`
-	Name     string `json:"name"`
+	ID           string `json:"id"`
+	Price        int64  `json:"price"`
+	Quantity     int    `json:"quantity"`
+	Name         string `json:"name"`
+	Brand        string `json:"brand,omitempty"`
+	Category     string `json:"category,omitempty"`
+	MerchantName string `json:"merchant_name,omitempty"`
 }
 
 type midtransSnapCustomer struct {
@@ -61,10 +64,15 @@ type midtransSnapCallbacks struct {
 	Error  string `json:"error,omitempty"`
 }
 
+type midtransSnapCreditCard struct {
+	Secure bool `json:"secure"`
+}
+
 type midtransSnapRequest struct {
 	TransactionDetails midtransSnapTransactionDetails `json:"transaction_details"`
 	ItemDetails        []midtransSnapItem             `json:"item_details"`
 	CustomerDetails    midtransSnapCustomer           `json:"customer_details"`
+	CreditCard         *midtransSnapCreditCard        `json:"credit_card,omitempty"`
 	EnabledPayments    []string                       `json:"enabled_payments"`
 	Callbacks          midtransSnapCallbacks          `json:"callbacks,omitempty"`
 }
@@ -329,10 +337,13 @@ func buildMidtransSnapPayload(
 		},
 		ItemDetails: []midtransSnapItem{
 			{
-				ID:       productCode,
-				Price:    grossAmount,
-				Quantity: 1,
-				Name:     productName,
+				ID:           productCode,
+				Price:        grossAmount,
+				Quantity:     1,
+				Name:         productName,
+				Brand:        "Anggijajan",
+				Category:     "Digital Product",
+				MerchantName: "Anggijajan",
 			},
 		},
 		CustomerDetails: midtransSnapCustomer{
@@ -345,6 +356,10 @@ func buildMidtransSnapPayload(
 			Phone: strings.TrimSpace(req.CustomerPhone),
 		},
 		EnabledPayments: []string{selected.ProviderMethod},
+	}
+	if selected.ProviderMethod == "google_pay" ||
+		selected.ProviderMethod == "credit_card" {
+		payload.CreditCard = &midtransSnapCreditCard{Secure: true}
 	}
 	if config, err := payments.ResolveMidtransRuntimeConfig(); err == nil {
 		payload.Callbacks = midtransSnapCallbacks{
@@ -452,6 +467,10 @@ func checkoutWithMidtrans(
 	if provider == "" {
 		provider = "digiflazz"
 	}
+	paymentFeeBearer := "MERCHANT"
+	if selected.CustomerSurcharge > 0 {
+		paymentFeeBearer = "SHARED"
+	}
 
 	trx := models.Transaction{
 		InvoiceID:           invoiceID,
@@ -462,7 +481,7 @@ func checkoutWithMidtrans(
 		Profit:              selected.TotalAmount - capital,
 		ProductAmount:       selected.ProductAmount,
 		StartingPrice:       selected.BasePrice,
-		CustomerSurcharge:   0,
+		CustomerSurcharge:   selected.CustomerSurcharge,
 		Status:              "UNPAID",
 		PaymentStatus:       "UNPAID",
 		FulfillmentStatus:   "WAITING_PAYMENT",
@@ -470,7 +489,7 @@ func checkoutWithMidtrans(
 		PaymentProvider:     "midtrans",
 		PaymentQuoteKey:     selected.QuoteKey,
 		PaymentMethod:       selected.ProviderMethod,
-		PaymentFeeBearer:    "MERCHANT",
+		PaymentFeeBearer:    paymentFeeBearer,
 		PaymentFeeEstimated: selected.EstimatedFee,
 		NetProfitEstimated:  selected.EstimatedNetProfit,
 		Reference:           statusReference,
@@ -522,16 +541,19 @@ func checkoutWithMidtrans(
 	return c.JSON(fiber.Map{
 		"message": "Success",
 		"data": fiber.Map{
-			"snap_token":       trx.SnapToken,
-			"redirect_url":     trx.PaymentURL,
-			"amount":           selected.TotalAmount,
-			"payment_method":   selected.ProviderMethod,
-			"payment_name":     selected.Name,
-			"payment_provider": "midtrans",
-			"quote_key":        selected.QuoteKey,
-			"invoice_id":       invoiceID,
-			"merchant_ref":     invoiceID,
-			"reference":        statusReference,
+			"snap_token":         trx.SnapToken,
+			"redirect_url":       trx.PaymentURL,
+			"amount":             selected.TotalAmount,
+			"base_price":         selected.BasePrice,
+			"customer_surcharge": selected.CustomerSurcharge,
+			"estimated_fee":      selected.EstimatedFee,
+			"payment_method":     selected.ProviderMethod,
+			"payment_name":       selected.Name,
+			"payment_provider":   "midtrans",
+			"quote_key":          selected.QuoteKey,
+			"invoice_id":         invoiceID,
+			"merchant_ref":       invoiceID,
+			"reference":          statusReference,
 		},
 	})
 }
