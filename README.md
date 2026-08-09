@@ -4,7 +4,7 @@ AnggiJajanV2 is a full-stack digital product transaction platform for **game top
 
 The project is built as a monorepo with a **Next.js frontend** and **Golang REST API**, backed by **PostgreSQL** and integrated with digital product providers and payment services.
 
-🌐 **Live Demo:** https://anggijajan.web.app
+🌐 **Live Demo:** https://anggi-jajan.web.app
 
 ---
 
@@ -320,7 +320,7 @@ Some areas are still being refined before a full production launch, particularly
 
 ## 🌐 Demo
 
-**Live Demo:** https://anggijajan.web.app
+**Live Demo:** https://anggi-jajan.web.app
 
 The demo environment is intended to showcase the current storefront and UI/UX implementation.
 
