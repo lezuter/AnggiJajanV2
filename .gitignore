@@ -5,6 +5,8 @@ frontend/node_modules/
 node_modules/
 frontend/.next/
 frontend/out/
+frontend/tmp/
+
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
@@ -13,6 +15,7 @@ yarn-error.log*
 # BACKEND (Golang)
 # ========================
 backend/tmp/
+backend/node_modules/
 backend/main.exe
 backend/main
 backend/*.exe
@@ -23,15 +26,27 @@ backend/*.exe
 .env
 .env.local
 .env.*.local
+backend/.env
+frontend/.env.local
 
 # ========================
-# LOGS & LARGE FILES
+# LOGS & GENERATED DATA
 # ========================
 *.log
 *.csv
+*.patch
+*.diff
+
+# ========================
+# TREE / STRUCTURE / AUDIT OUTPUT
+# ========================
 tree.txt
 tree-clean.txt
-.DS_Store
+structure.txt
+struktur.txt
+anggijajanv2-stucture.txt
+**/tree*.txt
+**/*structure*.txt
 
 # ========================
 # LOCAL TOOLS / TEMP FILES
@@ -40,20 +55,33 @@ tree-clean.txt
 APPLY.md
 skills-lock.json
 
-structure.txt
-struktur.txt
-**/tree admin.txt
-
-# Codex screenshots
+# ========================
+# CODING AGENT / LOCAL SCREENSHOTS
+# ========================
 frontend/.codex-*.png
+frontend/.codex-*.log
+frontend/.codex-dev.err.log
+frontend/.codex-dev.out.log
 
-# TypeScript build cache
+# ========================
+# TYPESCRIPT BUILD CACHE
+# ========================
 *.tsbuildinfo
 
-# Firebase local cache
+# ========================
+# FIREBASE LOCAL CACHE
+# ========================
 .firebase/
 
-# Editor / OS
+# ========================
+# LOCAL UPLOAD ARTIFACTS
+# ========================
+*.uploading.cfg
+
+# ========================
+# EDITOR / OS
+# ========================
 .vscode/
 .idea/
+.DS_Store
 Thumbs.db
