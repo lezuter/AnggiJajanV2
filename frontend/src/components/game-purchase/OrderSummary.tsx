@@ -8,8 +8,10 @@ interface OrderSummaryProps {
   rows: string[][]
   productAmountLabel: string
   paymentMethodLabel: string
+  quantity?: number
   customerSurchargeLabel: string
   hasCustomerSurcharge: boolean
+  appliedPromoCode?: string // Opsional: Tampilkan jika promo berhasil terpasang
   totalLabel: string
   onCheckout: () => void
 }
@@ -21,9 +23,11 @@ export default function OrderSummary ({
   purchasesEnabled,
   rows,
   productAmountLabel,
+  quantity = 1,
   paymentMethodLabel,
   customerSurchargeLabel,
   hasCustomerSurcharge,
+  appliedPromoCode,
   totalLabel,
   onCheckout
 }: OrderSummaryProps) {
@@ -59,24 +63,55 @@ export default function OrderSummary ({
       </dl>
 
       <dl className='mt-5 space-y-3 border-t border-white/[0.1] pt-5'>
+        {/* 1. Harga produk (Harga Satuan) */}
         <div className='flex items-center justify-between gap-4 text-sm'>
           <dt className='text-white/[0.44]'>Harga produk</dt>
           <dd className='text-right text-white/[0.72]'>{productAmountLabel}</dd>
         </div>
+
+        {/* 2. Jumlah (Hanya Tampil Jika Quantity > 1) */}
+        {quantity > 1 && (
+          <div className='flex items-center justify-between gap-4 text-sm'>
+            <dt className='text-white/[0.44]'>Jumlah</dt>
+            <dd className='text-right font-mono text-sm font-medium text-white/[0.72]'>
+              {quantity}
+            </dd>
+          </div>
+        )}
+
+        {/* 3. Pembayaran */}
         <div className='flex items-center justify-between gap-4 text-sm'>
           <dt className='text-white/[0.44]'>Pembayaran</dt>
           <dd className='text-right text-white/[0.72]'>{paymentMethodLabel}</dd>
         </div>
+
+        {/* 4. Biaya metode */}
         <div className='flex items-center justify-between gap-4 text-sm'>
           <dt className='text-white/[0.44]'>Biaya metode</dt>
-          <dd className={`text-right ${
-            hasCustomerSurcharge
-              ? 'font-medium text-amber-200/[0.82]'
-              : 'text-emerald-300/[0.68]'
-          }`}>
-            {customerSurchargeLabel}
+          <dd
+            className={`text-right ${
+              hasCustomerSurcharge
+                ? 'font-medium text-amber-200/[0.82]'
+                : 'text-emerald-300/[0.68]'
+            }`}
+          >
+            {hasCustomerSurcharge
+              ? customerSurchargeLabel
+              : 'Rp 0'}
           </dd>
         </div>
+
+        {/* 5. Kode promo (jika ada) */}
+        {appliedPromoCode && (
+          <div className='flex items-center justify-between gap-4 text-sm'>
+            <dt className='text-white/[0.44]'>Kode promo</dt>
+            <dd className='text-right font-mono text-xs font-semibold text-fuchsia-300'>
+              {appliedPromoCode}
+            </dd>
+          </div>
+        )}
+
+        {/* 6. Total Akhir */}
         <div className='flex items-end justify-between gap-4 border-t border-white/[0.08] pt-4'>
           <dt className='font-mono text-[10px] uppercase tracking-[0.1em] text-white/[0.48]'>
             Total

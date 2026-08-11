@@ -405,10 +405,11 @@ export default function GameDetailClient ({ slug }: { slug: string }) {
     const controller = new AbortController()
 
     const fetchPaymentMethods = async () => {
-      setPaymentMethods([])
-      setPaymentMethodsLoading(true)
+      // Hanya aktifkan skeleton loader jika belum ada metode pembayaran yang dimuat sama sekali
+      if (paymentMethods.length === 0) {
+        setPaymentMethodsLoading(true)
+      }
       setPaymentMethodsError('')
-      setSelectedQuoteKey('')
 
       try {
         const response = await fetch(
@@ -433,12 +434,21 @@ export default function GameDetailClient ({ slug }: { slug: string }) {
 
         const safeMethods = Array.isArray(result.methods) ? result.methods : []
         const availableMethods = safeMethods.filter(method => method.enabled)
-        const recommendedMethod =
-          availableMethods.find(method => method.recommended) ||
-          availableMethods[0]
 
+        // Update data kartu secara in-place tanpa menghapus elemen lama lebih dulu
         setPaymentMethods(safeMethods)
-        setSelectedQuoteKey(recommendedMethod?.quote_key || '')
+
+        // Pertahankan metode pembayaran yang sedang dipilih jika masih tersedia
+        setSelectedQuoteKey(prevKey => {
+          const isPrevStillValid = availableMethods.some(
+            m => m.quote_key === prevKey
+          )
+          if (isPrevStillValid) return prevKey
+
+          const recommendedMethod =
+            availableMethods.find(m => m.recommended) || availableMethods[0]
+          return recommendedMethod?.quote_key || ''
+        })
 
         if (availableMethods.length === 0) {
           const minimumReason = result.minimum_transaction_amount
@@ -507,8 +517,8 @@ export default function GameDetailClient ({ slug }: { slug: string }) {
     : 0
   const productAmount = selectedProduct ? unitPrice * quantity : undefined
   const productAmountLabel = selectedProduct
-    ? formatIDR(productAmount)
-    : 'Belum tersedia'
+    ? formatIDR(getProductStartingPrice(selectedProduct))
+    : 'Belum dipilih'
 
   const customerSurcharge = selectedPaymentMethod?.customer_surcharge ?? 0
   const customerSurchargeLabel = selectedPaymentMethod
@@ -523,6 +533,8 @@ export default function GameDetailClient ({ slug }: { slug: string }) {
 
   const totalLabel =
     typeof totalAmount === 'number' ? formatIDR(totalAmount) : 'Belum tersedia'
+
+  const appliedPromoCode = promoCode.trim() || undefined
 
   const canCheckout =
     PURCHASES_ENABLED &&
@@ -870,7 +882,11 @@ export default function GameDetailClient ({ slug }: { slug: string }) {
                 tabIndex={-1}
                 className='scroll-mt-[168px] outline-none lg:scroll-mt-[252px]'
               >
-                <QuantitySelector quantity={quantity} onChange={setQuantity} />
+                <QuantitySelector
+                  quantity={quantity}
+                  onChange={setQuantity}
+                  disabled={!selectedProduct || !hasAccountData}
+                />
               </div>
 
               <div
@@ -888,9 +904,17 @@ export default function GameDetailClient ({ slug }: { slug: string }) {
                 />
               </div>
 
-              <ContactInfo value={contactInfo} onChange={setContactInfo} />
+              <ContactInfo
+                value={contactInfo}
+                onChange={setContactInfo}
+                disabled={!selectedProduct || !hasAccountData}
+              />
 
-              <PromoCodeInput value={promoCode} onChange={setPromoCode} />
+              <PromoCodeInput
+                value={promoCode}
+                onChange={setPromoCode}
+                disabled={!selectedProduct || !hasAccountData}
+              />
 
               {/* OrderSummary Mobile */}
               <div className='lg:hidden'>
@@ -899,16 +923,20 @@ export default function GameDetailClient ({ slug }: { slug: string }) {
                   disabledReason={disabledReason}
                   isProcessing={isProcessing}
                   purchasesEnabled={PURCHASES_ENABLED}
-                  rows={summaryRows(
-                    game.name,
-                    selectedProduct,
-                    selectedTarget,
-                    quantity
-                  )}
+                  rows={[
+                    ['Game', game.name],
+                    ['Produk', selectedProduct ? selectedProduct.name : '-'], // Tanpa tambahan (5x) di sini
+                    [
+                      'Target',
+                      `${selectedTarget}${zoneId ? ` (${zoneId})` : ''}`
+                    ]
+                  ]}
                   productAmountLabel={productAmountLabel}
+                  quantity={quantity}
                   paymentMethodLabel={paymentMethodLabel}
                   customerSurchargeLabel={customerSurchargeLabel}
                   hasCustomerSurcharge={customerSurcharge > 0}
+                  appliedPromoCode={appliedPromoCode}
                   totalLabel={totalLabel}
                   onCheckout={handleOpenConfirmModal}
                 />
@@ -923,16 +951,20 @@ export default function GameDetailClient ({ slug }: { slug: string }) {
                   disabledReason={disabledReason}
                   isProcessing={isProcessing}
                   purchasesEnabled={PURCHASES_ENABLED}
-                  rows={summaryRows(
-                    game.name,
-                    selectedProduct,
-                    selectedTarget,
-                    quantity
-                  )}
+                  rows={[
+                    ['Game', game.name],
+                    ['Produk', selectedProduct ? selectedProduct.name : '-'], // Tanpa tambahan (5x) di sini
+                    [
+                      'Target',
+                      `${selectedTarget}${zoneId ? ` (${zoneId})` : ''}`
+                    ]
+                  ]}
                   productAmountLabel={productAmountLabel}
+                  quantity={quantity}
                   paymentMethodLabel={paymentMethodLabel}
                   customerSurchargeLabel={customerSurchargeLabel}
                   hasCustomerSurcharge={customerSurcharge > 0}
+                  appliedPromoCode={appliedPromoCode}
                   totalLabel={totalLabel}
                   onCheckout={handleOpenConfirmModal}
                 />

@@ -3,11 +3,13 @@
 interface QuantitySelectorProps {
   quantity: number
   onChange: (quantity: number) => void
+  disabled?: boolean
 }
 
 export default function QuantitySelector ({
   quantity,
-  onChange
+  onChange,
+  disabled = false
 }: QuantitySelectorProps) {
   return (
     <section
@@ -31,19 +33,20 @@ export default function QuantitySelector ({
           <button
             type='button'
             onClick={() => onChange(Math.max(1, quantity - 1))}
-            disabled={quantity <= 1}
+            disabled={disabled || quantity <= 1}
             className='flex h-9 w-9 items-center justify-center rounded-full border border-white/[0.08] bg-white/[0.04] text-white transition-colors hover:bg-white/[0.1] disabled:cursor-not-allowed disabled:opacity-30'
             aria-label='Kurangi jumlah'
           >
             -
           </button>
-          <span className='w-8 text-center font-mono text-base font-semibold text-white'>
+          <span className={`w-8 text-center font-mono text-base font-semibold ${disabled ? 'text-white/40' : 'text-white'}`}>
             {quantity}
           </span>
           <button
             type='button'
             onClick={() => onChange(quantity + 1)}
-            className='flex h-9 w-9 items-center justify-center rounded-full border border-white/[0.08] bg-white/[0.04] text-white transition-colors hover:bg-white/[0.1]'
+            disabled={disabled}
+            className='flex h-9 w-9 items-center justify-center rounded-full border border-white/[0.08] bg-white/[0.04] text-white transition-colors hover:bg-white/[0.1] disabled:cursor-not-allowed disabled:opacity-30'
             aria-label='Tambah jumlah'
           >
             +
