@@ -2,7 +2,6 @@
 
 import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useRef, useState } from 'react'
-
 import { payWithMidtransSnap } from '@/lib/midtransSnap'
 
 interface PaymentData {
@@ -25,7 +24,7 @@ interface PaymentModalProps {
 }
 
 interface TransactionStatusResponse {
-  status?: string
+  status: string
   payment_status?: string
   sn?: string
 }
@@ -33,6 +32,43 @@ interface TransactionStatusResponse {
 const API_BASE_URL = (
   process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api'
 ).replace(/\/+$/, '')
+
+// Subkomponen Pemutar Animasi Lottie (Support Next.js SSR)
+function LottiePlayer ({ animationPath }: { animationPath: string }) {
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    let anim: any
+
+    import('lottie-web')
+      .then(lottie => {
+        if (containerRef.current) {
+          containerRef.current.innerHTML = ''
+          anim = lottie.default.loadAnimation({
+            container: containerRef.current,
+            renderer: 'svg',
+            loop: true,
+            autoplay: true,
+            path: animationPath // Mengambil file JSON dari /public/animations/
+          })
+        }
+      })
+      .catch(err => {
+        console.warn('Gagal memuat animasi lottie:', err)
+      })
+
+    return () => {
+      if (anim) anim.destroy()
+    }
+  }, [animationPath])
+
+  return (
+    <div
+      ref={containerRef}
+      className='mx-auto h-28 w-28 flex items-center justify-center'
+    />
+  )
+}
 
 export default function PaymentModal ({
   isOpen,
@@ -69,6 +105,7 @@ export default function PaymentModal ({
 
     setSnapLoading(true)
     setSnapError('')
+
     try {
       await payWithMidtransSnap(token, {
         onSuccess: () => {
@@ -164,7 +201,9 @@ export default function PaymentModal ({
           { cache: 'no-store' }
         )
         if (!response.ok) {
-          throw new Error(`Status transaksi gagal dimuat: HTTP ${response.status}`)
+          throw new Error(
+            `Status transaksi gagal dimuat: HTTP ${response.status}`
+          )
         }
 
         const result = (await response.json()) as TransactionStatusResponse
@@ -226,38 +265,61 @@ export default function PaymentModal ({
           aria-label='Tutup dialog pembayaran'
           className='absolute right-4 top-4 z-20 flex h-10 w-10 items-center justify-center rounded-full border border-white/[0.08] bg-white/[0.035] text-white/[0.52] outline-none transition-colors hover:bg-white/[0.06] hover:text-white focus-visible:ring-2 focus-visible:ring-fuchsia-400/70'
         >
-          <svg aria-hidden='true' viewBox='0 0 24 24' fill='none' className='h-4 w-4'>
-            <path d='m7 7 10 10M17 7 7 17' stroke='currentColor' strokeLinecap='round' strokeWidth='1.8' />
+          <svg
+            aria-hidden='true'
+            viewBox='0 0 24 24'
+            fill='none'
+            className='h-4 w-4'
+          >
+            <path
+              d='m7 7 10 10M17 7 7 17'
+              stroke='currentColor'
+              strokeLinecap='round'
+              strokeWidth='1.8'
+            />
           </svg>
         </button>
 
         <div className='relative z-10'>
+          {/* STATE 1: UNPAID (Selesaikan Pembayaran) */}
           {status === 'UNPAID' && (
             <>
+              \n{' '}
               <p className='font-mono text-[10px] uppercase tracking-[0.12em] text-white/[0.42]'>
                 MIDTRANS · {paymentName}
               </p>
-              <h2 id='payment-modal-title' className='mt-3 pr-10 text-[28px] font-medium leading-tight tracking-[-0.035em] text-white'>
+              <h2
+                id='payment-modal-title'
+                className='mt-3 pr-10 text-[28px] font-medium leading-tight tracking-[-0.035em] text-white'
+              >
                 Selesaikan pembayaran
               </h2>
-              <p id='payment-modal-description' className='mt-2 text-sm leading-6 text-white/[0.5]'>
-                Snap dibuka langsung ke metode yang kamu pilih. Daftar metode tidak akan ditampilkan ulang.
+              <p
+                id='payment-modal-description'
+                className='mt-2 text-sm leading-6 text-white/[0.5]'
+              >
+                Snap dibuka langsung ke metode yang kamu pilih. Daftar metode
+                tidak akan ditampilkan ulang.
               </p>
-
               <div className='mt-6 rounded-[18px] border border-white/[0.08] bg-white/[0.025] p-4'>
-                <p className='font-mono text-[9px] uppercase tracking-[0.1em] text-white/[0.4]'>Total tagihan</p>
+                <p className='font-mono text-[9px] uppercase tracking-[0.1em] text-white/[0.4]'>
+                  Total tagihan
+                </p>
                 <p className='mt-2 text-[30px] font-medium tracking-[-0.04em] text-white'>
                   Rp {data.amount ? data.amount.toLocaleString('id-ID') : '0'}
                 </p>
-                <p className='mt-2 break-all font-mono text-[10px] text-white/[0.34]'>{merchantReference}</p>
+                <p className='mt-2 break-all font-mono text-[10px] text-white/[0.34]'>
+                  {merchantReference}
+                </p>
               </div>
-
               {snapError && (
-                <p role='alert' className='mt-4 rounded-[18px] border border-rose-300/20 bg-rose-300/[0.06] p-4 text-sm leading-6 text-rose-100'>
+                <p
+                  role='alert'
+                  className='mt-4 rounded-[18px] border border-rose-300/20 bg-rose-300/[0.06] p-4 text-sm leading-6 text-rose-100'
+                >
                   {snapError}
                 </p>
               )}
-
               <button
                 type='button'
                 onClick={() => void openSnap()}
@@ -266,32 +328,74 @@ export default function PaymentModal ({
               >
                 {snapLoading ? 'Membuka Snap...' : 'Buka pembayaran Midtrans'}
               </button>
-
               <p className='mt-5 inline-flex items-center gap-2 text-xs text-white/[0.4]'>
-                <span aria-hidden='true' className='h-1.5 w-1.5 animate-pulse rounded-full bg-blue-400 shadow-[0_0_12px_rgba(96,165,250,0.7)] motion-reduce:animate-none' />
+                <span
+                  aria-hidden='true'
+                  className='h-1.5 w-1.5 animate-pulse rounded-full bg-blue-400 shadow-[0_0_12px_rgba(96,165,250,0.7)] motion-reduce:animate-none'
+                />
                 Status pembayaran diperiksa otomatis
               </p>
             </>
           )}
 
+          {/* STATE 2: PAID (Pembayaran Berhasil) */}
           {status === 'PAID' && (
-            <div className='py-7'>
-              <div className='mx-auto flex h-16 w-16 items-center justify-center rounded-full border border-emerald-400/30 bg-emerald-400/[0.09] text-3xl text-emerald-300'>✓</div>
-              <h2 id='payment-modal-title' className='mt-5 text-[28px] font-medium tracking-[-0.035em] text-white'>Pembayaran berhasil</h2>
-              <p id='payment-modal-description' className='mt-2 text-sm leading-6 text-white/[0.5]'>Top up kamu sedang diproses oleh sistem.</p>
-              {sn && <p className='mt-5 break-all rounded-[18px] border border-emerald-400/20 bg-emerald-400/[0.06] p-4 font-mono text-sm text-white/[0.78]'>{sn}</p>}
-              <button type='button' onClick={goToOrderCheck} className='mt-7 min-h-12 w-full rounded-full border border-white bg-white px-6 text-sm font-semibold text-black outline-none transition-colors hover:bg-fuchsia-300 focus-visible:ring-2 focus-visible:ring-fuchsia-400/70'>
+            <div className='py-4'>
+              {/* Animasi Lottie Sukses */}
+              <LottiePlayer animationPath='/animations/success.json' />
+
+              <h2
+                id='payment-modal-title'
+                className='mt-4 text-[26px] font-medium tracking-[-0.035em] text-white'
+              >
+                Pembayaran berhasil
+              </h2>
+              <p
+                id='payment-modal-description'
+                className='mt-2 text-sm leading-6 text-white/[0.5]'
+              >
+                Top up kamu sedang diproses oleh sistem.
+              </p>
+              {sn && (
+                <p className='mt-4 break-all rounded-[18px] border border-emerald-400/20 bg-emerald-400/[0.06] p-4 font-mono text-sm text-white/[0.78]'>
+                  {sn}
+                </p>
+              )}
+              <button
+                type='button'
+                onClick={goToOrderCheck}
+                className='mt-6 min-h-12 w-full rounded-full border border-white bg-white px-6 text-sm font-semibold text-black outline-none transition-colors hover:bg-fuchsia-300 focus-visible:ring-2 focus-visible:ring-fuchsia-400/70'
+              >
                 Tutup &amp; Cek Pesanan
               </button>
             </div>
           )}
 
+          {/* STATE 3: FAILED (Transaksi Gagal / Expired) */}
           {status === 'FAILED' && (
-            <div className='py-7'>
-              <div className='mx-auto flex h-16 w-16 items-center justify-center rounded-full border border-rose-400/30 bg-rose-400/[0.09] text-3xl text-rose-300'>×</div>
-              <h2 id='payment-modal-title' className='mt-5 text-[28px] font-medium tracking-[-0.035em] text-white'>Transaksi gagal</h2>
-              <p id='payment-modal-description' className='mt-2 text-sm leading-6 text-white/[0.5]'>Pembayaran kedaluwarsa, dibatalkan, atau gagal diproses.</p>
-              <button type='button' onClick={onClose} className='mt-7 min-h-12 w-full rounded-full border border-white/[0.1] bg-white/[0.045] px-6 text-sm font-semibold text-white outline-none transition-colors hover:bg-fuchsia-400/[0.1] focus-visible:ring-2 focus-visible:ring-fuchsia-400/70'>Tutup</button>
+            <div className='py-4'>
+              {/* Animasi Lottie Gagal/Error */}
+              <LottiePlayer animationPath='/animations/error.json' />
+
+              <h2
+                id='payment-modal-title'
+                className='mt-4 text-[26px] font-medium tracking-[-0.035em] text-white'
+              >
+                Transaksi gagal
+              </h2>
+              <p
+                id='payment-modal-description'
+                className='mt-2 text-sm leading-6 text-white/[0.5]'
+              >
+                Pembayaran kedaluwarsa, dibatalkan, atau gagal diproses.
+              </p>
+              <button
+                type='button'
+                onClick={onClose}
+                className='mt-6 min-h-12 w-full rounded-full border border-white/[0.1] bg-white/[0.045] px-6 text-sm font-semibold text-white outline-none transition-colors hover:bg-fuchsia-400/[0.1] focus-visible:ring-2 focus-visible:ring-fuchsia-400/70'
+              >
+                Tutup
+              </button>
             </div>
           )}
         </div>
