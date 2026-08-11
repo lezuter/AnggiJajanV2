@@ -217,22 +217,10 @@ const formatIDR = (value?: number) =>
       }).format(value)
     : 'Belum tersedia saat layanan dibuka'
 
-const summaryRows = (
-  gameName: string,
-  selectedProduct: Product | null,
-  selectedTarget: string,
-  quantity: number
-) => [
+const summaryRows = (gameName: string, product: any, target: string) => [
   ['Game', gameName],
-  [
-    'Produk',
-    selectedProduct
-      ? quantity > 1
-        ? `${selectedProduct.name} (${quantity}x)`
-        : selectedProduct.name
-      : '-'
-  ],
-  ['Target', selectedTarget || '-']
+  ['Produk', product ? product.name : '-'], // Bersih, tanpa ada (quantity + 'x') di sini
+  ['Target', target]
 ]
 
 export default function GameDetailClient ({ slug }: { slug: string }) {
@@ -923,16 +911,9 @@ export default function GameDetailClient ({ slug }: { slug: string }) {
                   disabledReason={disabledReason}
                   isProcessing={isProcessing}
                   purchasesEnabled={PURCHASES_ENABLED}
-                  rows={[
-                    ['Game', game.name],
-                    ['Produk', selectedProduct ? selectedProduct.name : '-'], // Tanpa tambahan (5x) di sini
-                    [
-                      'Target',
-                      `${selectedTarget}${zoneId ? ` (${zoneId})` : ''}`
-                    ]
-                  ]}
+                  rows={summaryRows(game.name, selectedProduct, selectedTarget)} // Kuantitas sudah tidak perlu dikirim lewat rows lagi
                   productAmountLabel={productAmountLabel}
-                  quantity={quantity}
+                  quantity={quantity} // Kuantitas dikirim lewat prop mandiri ini agar tampil di baris terpisah
                   paymentMethodLabel={paymentMethodLabel}
                   customerSurchargeLabel={customerSurchargeLabel}
                   hasCustomerSurcharge={customerSurcharge > 0}
@@ -951,16 +932,9 @@ export default function GameDetailClient ({ slug }: { slug: string }) {
                   disabledReason={disabledReason}
                   isProcessing={isProcessing}
                   purchasesEnabled={PURCHASES_ENABLED}
-                  rows={[
-                    ['Game', game.name],
-                    ['Produk', selectedProduct ? selectedProduct.name : '-'], // Tanpa tambahan (5x) di sini
-                    [
-                      'Target',
-                      `${selectedTarget}${zoneId ? ` (${zoneId})` : ''}`
-                    ]
-                  ]}
+                  rows={summaryRows(game.name, selectedProduct, selectedTarget)} // Kuantitas sudah tidak perlu dikirim lewat rows lagi
                   productAmountLabel={productAmountLabel}
-                  quantity={quantity}
+                  quantity={quantity} // Kuantitas dikirim lewat prop mandiri ini agar tampil di baris terpisah
                   paymentMethodLabel={paymentMethodLabel}
                   customerSurchargeLabel={customerSurchargeLabel}
                   hasCustomerSurcharge={customerSurcharge > 0}

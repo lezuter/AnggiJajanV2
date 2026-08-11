@@ -118,7 +118,7 @@ export default function ConfirmationModal ({
 
   return (
     <div
-      className='fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-md transition-opacity duration-200'
+      className='fixed inset-0 z-50 bg-black/10 flex items-center justify-center p-4 backdrop-blur-md transition-opacity duration-200'
       onClick={onClose}
     >
       <div
