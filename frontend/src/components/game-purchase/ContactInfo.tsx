@@ -22,7 +22,7 @@ export default function ContactInfo ({
         </p>
         <h2
           id='contact-info-title'
-          className='mt-2 text-2xl font-medium tracking-[-0.03em] text-white sm:text-[30px]'
+          className='mt-2 text-2xl font-medium tracking-[-0.03em] text-white sm:text-[28px]'
         >
           Informasi kontak
         </h2>

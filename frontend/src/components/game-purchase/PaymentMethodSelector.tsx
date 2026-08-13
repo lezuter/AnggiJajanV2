@@ -380,7 +380,7 @@ export default function PaymentMethodSelector({
         </p>
         <h2
           id="payment-method-title"
-          className="mt-2 text-2xl font-medium tracking-[-0.03em] text-white sm:text-[30px]"
+          className="mt-2 text-2xl font-medium tracking-[-0.03em] text-white sm:text-[28px]"
         >
           Metode pembayaran
         </h2>

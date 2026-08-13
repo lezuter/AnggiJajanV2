@@ -21,7 +21,7 @@ export default function QuantitySelector ({
           <p className='font-mono text-[10px] uppercase tracking-[0.12em] text-white/[0.42]'>
             Jumlah
           </p>
-          <h2 className='mt-2 text-2xl font-medium tracking-[-0.03em] text-white sm:text-[30px]'>
+          <h2 className='mt-2 text-2xl font-medium tracking-[-0.03em] text-white sm:text-[28px]'>
             Jumlah pembelian
           </h2>
           <p className='mt-2 text-sm leading-6 text-white/[0.5]'>

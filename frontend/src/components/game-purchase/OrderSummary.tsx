@@ -11,7 +11,8 @@ interface OrderSummaryProps {
   quantity?: number
   customerSurchargeLabel: string
   hasCustomerSurcharge: boolean
-  appliedPromoCode?: string // Opsional: Tampilkan jika promo berhasil terpasang
+  contactInfo?: string
+  appliedPromoCode?: string
   totalLabel: string
   onCheckout: () => void
 }
@@ -27,10 +28,13 @@ export default function OrderSummary ({
   paymentMethodLabel,
   customerSurchargeLabel,
   hasCustomerSurcharge,
+  contactInfo,
   appliedPromoCode,
   totalLabel,
   onCheckout
 }: OrderSummaryProps) {
+  const hasAdditionalInfo = Boolean(contactInfo || appliedPromoCode)
+
   return (
     <section
       aria-labelledby='order-summary-title'
@@ -42,85 +46,100 @@ export default function OrderSummary ({
         </p>
         <h2
           id='order-summary-title'
-          className='mt-2 text-[28px] font-medium tracking-[-0.035em] text-white'
+          className='mt-2 text-2xl font-medium tracking-[-0.03em] text-white sm:text-[28px]'
         >
           Pesanan
         </h2>
       </div>
 
+      {/* KELOMPOK 1: DETAIL PESANAN (Target disesuaikan jadi 'Detail Akun') */}
       <dl className='mt-7 space-y-4'>
-        {rows.map(([label, value]) => (
-          <div
-            key={label}
-            className='grid grid-cols-[88px_minmax(0,1fr)] gap-4 border-t border-white/[0.08] pt-4'
-          >
-            <dt className='text-xs text-white/[0.4]'>{label}</dt>
-            <dd className='break-words text-right text-sm text-white/[0.76]'>
-              {value}
-            </dd>
-          </div>
-        ))}
+        {rows.map(([label, value]) => {
+          const displayLabel = label === 'Target' ? 'Detail Akun' : label
+          return (
+            <div
+              key={label}
+              className='grid grid-cols-[96px_minmax(0,1fr)] gap-4 border-t border-white/[0.08] pt-4'
+            >
+              <dt className='text-xs text-white/[0.4]'>{displayLabel}</dt>
+              <dd className='break-words text-right text-sm text-white/[0.88]'>
+                {value}
+              </dd>
+            </div>
+          )
+        })}
       </dl>
 
+      {/* KELOMPOK 2: DETAIL PEMBAYARAN */}
       <dl className='mt-5 space-y-3 border-t border-white/[0.1] pt-5'>
-        {/* 1. Harga produk (Harga Satuan) */}
         <div className='flex items-center justify-between gap-4 text-sm'>
           <dt className='text-white/[0.44]'>Harga produk</dt>
-          <dd className='text-right text-white/[0.72]'>{productAmountLabel}</dd>
+          <dd className='text-right text-white/[0.88]'>{productAmountLabel}</dd>
         </div>
 
-        {/* 2. Jumlah (Hanya Tampil Jika Quantity > 1) */}
+        {/* Jumlah hanya tampil jika quantity > 1 */}
         {quantity > 1 && (
           <div className='flex items-center justify-between gap-4 text-sm'>
             <dt className='text-white/[0.44]'>Jumlah</dt>
-            <dd className='text-right font-mono text-sm font-medium text-white/[0.72]'>
-              {quantity}
+            <dd className='text-right font-mono text-sm font-semibold text-white'>
+              {quantity}x
             </dd>
           </div>
         )}
 
-        {/* 3. Pembayaran */}
         <div className='flex items-center justify-between gap-4 text-sm'>
           <dt className='text-white/[0.44]'>Pembayaran</dt>
-          <dd className='text-right text-white/[0.72]'>{paymentMethodLabel}</dd>
+          <dd className='text-right text-white/[0.88]'>{paymentMethodLabel}</dd>
         </div>
 
-        {/* 4. Biaya metode */}
         <div className='flex items-center justify-between gap-4 text-sm'>
           <dt className='text-white/[0.44]'>Biaya metode</dt>
           <dd
-            className={`text-right ${
+            className={`text-right text-sm ${
               hasCustomerSurcharge
                 ? 'font-medium text-amber-200/[0.82]'
-                : 'text-emerald-300/[0.68]'
+                : 'font-medium text-emerald-300/[0.82]'
             }`}
           >
-            {hasCustomerSurcharge
-              ? customerSurchargeLabel
-              : 'Rp 0'}
-          </dd>
-        </div>
-
-        {/* 5. Kode promo (jika ada) */}
-        {appliedPromoCode && (
-          <div className='flex items-center justify-between gap-4 text-sm'>
-            <dt className='text-white/[0.44]'>Kode promo</dt>
-            <dd className='text-right font-mono text-xs font-semibold text-fuchsia-300'>
-              {appliedPromoCode}
-            </dd>
-          </div>
-        )}
-
-        {/* 6. Total Akhir */}
-        <div className='flex items-end justify-between gap-4 border-t border-white/[0.08] pt-4'>
-          <dt className='font-mono text-[10px] uppercase tracking-[0.1em] text-white/[0.48]'>
-            Total
-          </dt>
-          <dd className='break-words text-right text-2xl font-medium tracking-[-0.035em] text-white'>
-            {totalLabel}
+            {hasCustomerSurcharge ? customerSurchargeLabel : 'Rp 0'}
           </dd>
         </div>
       </dl>
+
+      {/* KELOMPOK 3: INFORMASI TAMBAHAN (Hanya Tampil Jika Kontak / Promo Diisi) */}
+      {hasAdditionalInfo && (
+        <div className='mt-6 border-t border-white/[0.08] pt-5'>
+          <dl className='space-y-3'>
+            {contactInfo && (
+              <div className='flex items-center justify-between gap-4 text-sm'>
+                <dt className='text-xs text-white/[0.44]'>Kontak</dt>
+                <dd className='break-all text-right text-sm font-medium text-white/[0.88]'>
+                  {contactInfo}
+                </dd>
+              </div>
+            )}
+
+            {appliedPromoCode && (
+              <div className='flex items-center justify-between gap-4 text-sm'>
+                <dt className='text-xs text-white/[0.44]'>Kode promo</dt>
+                <dd className='text-right font-mono text-sm font-semibold text-fuchsia-300'>
+                  {appliedPromoCode}
+                </dd>
+              </div>
+            )}
+          </dl>
+        </div>
+      )}
+
+      {/* TOTAL AKHIR (CYAN) */}
+      <div className='mt-5 flex items-end justify-between gap-4 border-t border-white/[0.1] pt-4'>
+        <dt className='font-medium text-sm uppercase tracking-[0.1em] text-white'>
+          Total
+        </dt>
+        <dd className='break-words text-right text-2xl font-bold tracking-[-0.035em] text-cyan-400'>
+          {totalLabel}
+        </dd>
+      </div>
 
       <button
         type='button'

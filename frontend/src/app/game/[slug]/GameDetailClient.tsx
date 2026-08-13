@@ -917,6 +917,7 @@ export default function GameDetailClient ({ slug }: { slug: string }) {
                   paymentMethodLabel={paymentMethodLabel}
                   customerSurchargeLabel={customerSurchargeLabel}
                   hasCustomerSurcharge={customerSurcharge > 0}
+                  contactInfo={contactInfo.trim() || undefined}
                   appliedPromoCode={appliedPromoCode}
                   totalLabel={totalLabel}
                   onCheckout={handleOpenConfirmModal}
@@ -938,6 +939,7 @@ export default function GameDetailClient ({ slug }: { slug: string }) {
                   paymentMethodLabel={paymentMethodLabel}
                   customerSurchargeLabel={customerSurchargeLabel}
                   hasCustomerSurcharge={customerSurcharge > 0}
+                  contactInfo={contactInfo.trim() || undefined}
                   appliedPromoCode={appliedPromoCode}
                   totalLabel={totalLabel}
                   onCheckout={handleOpenConfirmModal}
@@ -960,18 +962,17 @@ export default function GameDetailClient ({ slug }: { slug: string }) {
           userId,
           zoneId,
           gameName: game.name,
-          productName: selectedProduct
-            ? quantity > 1
-              ? `${selectedProduct.name} (${quantity}x)`
-              : selectedProduct.name
-            : '-',
+          productName: selectedProduct?.name || '-', // Nama produk murni tanpa (2x)
+          quantity: quantity, // Kuantitas pembelian
+          contactInfo: contactInfo.trim() || undefined, // Kontak (email/WhatsApp)
           paymentMethodName: paymentMethodLabel,
           paymentMethodImage: selectedPaymentMethod?.image_url,
           paymentMethodCode: selectedPaymentMethod?.code,
           isQris: selectedPaymentMethod?.category === 'QRIS',
-          productAmountLabel,
+          productAmountLabel, // Subtotal harga produk x quantity
           surchargeLabel: customerSurchargeLabel,
           hasCustomerSurcharge: customerSurcharge > 0,
+          appliedPromoCode: appliedPromoCode, // Kode promo yang terpasang
           totalLabel
         }}
       />

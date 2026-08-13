@@ -57,7 +57,7 @@ export default function AccountTargetFields ({
 
         <h2
           id='account-target-title'
-          className='mt-2 text-2xl font-medium tracking-[-0.03em] text-white sm:text-[30px]'
+          className='mt-2 text-2xl font-medium tracking-[-0.03em] text-white sm:text-[28px]'
         >
           Tujuan top up
         </h2>

@@ -35,7 +35,7 @@ export default function PromoCodeInput ({
         </p>
         <h2
           id='promo-code-title'
-          className='mt-2 text-2xl font-medium tracking-[-0.03em] text-white sm:text-[30px]'
+          className='mt-2 text-2xl font-medium tracking-[-0.03em] text-white sm:text-[28px]'
         >
           Kode promo
         </h2>

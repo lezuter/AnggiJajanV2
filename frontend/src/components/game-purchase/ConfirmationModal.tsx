@@ -7,13 +7,16 @@ export interface ConfirmationModalData {
   zoneId?: string
   gameName: string
   productName: string
+  quantity?: number
+  contactInfo?: string
   paymentMethodName: string
-  paymentMethodImage?: string // image_url
-  paymentMethodCode?: string // code (e.g. "bca", "gopay")
-  isQris?: boolean // category === "QRIS"
+  paymentMethodImage?: string
+  paymentMethodCode?: string
+  isQris?: boolean
   productAmountLabel: string
   surchargeLabel: string
   hasCustomerSurcharge?: boolean
+  appliedPromoCode?: string
   totalLabel: string
 }
 
@@ -25,7 +28,6 @@ interface ConfirmationModalProps {
   data: ConfirmationModalData
 }
 
-// Subkomponen PaymentLogo presisi sesuai PaymentMethodSelector.tsx
 function PaymentLogo ({
   src,
   alt,
@@ -52,23 +54,19 @@ function PaymentLogo ({
 
     return (
       <div
-        className={`relative flex shrink-0 items-center justify-end ${
-          isSquareLogo
-            ? 'h-7 w-7' // Logo 1:1 (Persegi/Ikon): 28px x 28px
-            : 'h-[22px] max-w-[80px]' // Logo Lanskap (Panjang)
+        className={`relative flex shrink-0 items-center justify-center self-center ${
+          isSquareLogo ? 'h-7 w-7' : 'h-[25px] max-w-[92px]'
         }`}
       >
-        {/* Glow Layer */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={formattedSrc}
           alt=''
           aria-hidden='true'
           className={`pointer-events-none absolute object-contain opacity-40 blur-[6px] saturate-150 ${
-            isSquareLogo ? 'h-7 w-7' : 'h-[22px] max-w-[80px]'
+            isSquareLogo ? 'h-7 w-7' : 'h-[25px] max-w-[92px]'
           }`}
         />
-        {/* Main Logo Layer */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={formattedSrc}
@@ -77,24 +75,22 @@ function PaymentLogo ({
             const img = e.currentTarget
             if (img.naturalWidth && img.naturalHeight) {
               const ratio = img.naturalWidth / img.naturalHeight
-              // Jika rasio <= 1.3, anggap logo 1:1 (persegi)
               setIsSquareLogo(ratio <= 1.3)
             }
           }}
           onError={() => setFailed(true)}
           className={`relative z-10 object-contain ${
-            isSquareLogo ? 'h-7 w-7' : 'h-[22px] max-w-[80px] w-auto'
+            isSquareLogo ? 'h-7 w-7' : 'h-[25px] max-w-[92px] w-auto'
           }`}
         />
       </div>
     )
   }
 
-  // Fallback Badge jika logo gambar kosong / gagal dimuat
   const displayCode = (code || (isQris ? 'QR' : 'PAY')).toUpperCase()
 
   return (
-    <div className='relative flex h-6 px-2 shrink-0 items-center justify-center rounded-full bg-white/[0.08] border border-white/[0.12] shadow-sm'>
+    <div className='relative flex h-5 px-2 shrink-0 items-center justify-center rounded-full bg-white/[0.08] border border-white/[0.12] shadow-sm'>
       <span className='font-mono text-[9px] font-bold text-white/[0.7] tracking-tighter'>
         {displayCode.slice(0, 6)}
       </span>
@@ -115,19 +111,24 @@ export default function ConfirmationModal ({
     ? `${data.userId} (${data.zoneId})`
     : data.userId
   const isSurchargeActive = Boolean(data.hasCustomerSurcharge)
+  const hasAdditionalInfo = Boolean(data.contactInfo || data.appliedPromoCode)
 
   return (
     <div
-      className='fixed inset-0 z-50 bg-black/10 flex items-center justify-center p-4 backdrop-blur-md transition-opacity duration-200'
+      className='fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md transition-opacity duration-200'
       onClick={onClose}
     >
       <div
-        className='aj-public-glass aj-public-glass--overlay relative w-full max-w-md overflow-hidden rounded-[28px] border border-white/[0.1] p-6 shadow-[0_22px_70px_rgba(0,0,0,0.5)] text-white sm:p-7'
+        className='aj-public-glass aj-public-glass--overlay relative w-full max-w-md overflow-hidden rounded-[28px] border border-white/[0.1] p-6 shadow-[0_22px_70px_rgba(0,0,0,0.6)] text-white sm:p-7'
         onClick={e => e.stopPropagation()}
       >
+        <div
+          aria-hidden='true'
+          className='pointer-events-none absolute inset-x-6 top-0 h-px bg-gradient-to-r from-transparent via-white/[0.22] to-transparent'
+        />
 
         {/* Header */}
-        <div className='flex items-center justify-between pb-4 border-b border-white/[0.08]'>
+        <div className='relative z-10 flex items-center justify-between pb-4 border-b border-white/[0.08]'>
           <h2 className='text-xl font-medium tracking-tight text-white'>
             Konfirmasi Pesanan
           </h2>
@@ -142,50 +143,57 @@ export default function ConfirmationModal ({
           </button>
         </div>
 
-        <div className='mt-5 space-y-6'>
-          {/* Detail Pesanan */}
+        {/* Content Body */}
+        <div className='relative z-10 mt-5 space-y-5'>
+          {/* GRUP 1: DETAIL PESANAN */}
           <div>
-            <h3 className='mb-3 text-sm font-semibold tracking-wide text-white'>
-              Detail Pesanan
-            </h3>
-            <div className='space-y-2.5'>
+            <p className='mb-3 font-mono text-[10px] uppercase tracking-[0.12em] text-white/[0.88]'>
+              DETAIL PESANAN
+            </p>
+            <div className='space-y-2.5 text-sm'>
               <div className='flex items-start justify-between gap-4'>
-                <span className='shrink-0 whitespace-nowrap text-xs text-white/[0.52]'>
-                  Game
-                </span>
-                <span className='text-right text-sm font-medium leading-snug text-white'>
+                <span className='text-sm text-white/[0.44]'>Game</span>
+                <span className='text-right font-medium text-white/[0.88]'>
                   {data.gameName || '-'}
                 </span>
               </div>
               <div className='flex items-start justify-between gap-4'>
-                <span className='shrink-0 whitespace-nowrap text-xs text-white/[0.52]'>
-                  Item Produk
-                </span>
-                <span className='text-right text-sm font-medium leading-snug text-white'>
+                <span className='text-sm text-white/[0.44]'>Produk</span>
+                <span className='text-right font-medium text-white/[0.88]'>
                   {data.productName || '-'}
                 </span>
               </div>
               <div className='flex items-start justify-between gap-4'>
-                <span className='shrink-0 whitespace-nowrap text-xs text-white/[0.52]'>
-                  Target ID
-                </span>
-                <span className='text-right text-sm font-medium leading-snug text-white'>
+                <span className='text-sm text-white/[0.44]'>Detail Akun</span>
+                <span className='text-right font-medium text-white/[0.88]'>
                   {targetDisplay || '-'}
                 </span>
               </div>
             </div>
           </div>
 
-          {/* Detail Pembayaran */}
-          <div>
-            <h3 className='mb-3 text-sm font-semibold tracking-wide text-white'>
-              Detail Pembayaran
-            </h3>
-            <div className='space-y-2.5'>
+          {/* GRUP 2: DETAIL PEMBAYARAN */}
+          <div className='border-t border-white/[0.08] pt-4'>
+            <p className='mb-3 font-mono text-[10px] uppercase tracking-[0.12em] text-white/[0.88]'>
+              DETAIL PEMBAYARAN
+            </p>
+            <div className='space-y-2.5 text-sm'>
               <div className='flex items-center justify-between gap-4'>
-                <span className='shrink-0 whitespace-nowrap text-xs text-white/[0.52]'>
-                  Metode Pembayaran
+                <span className='text-sm text-white/[0.44]'>Harga produk</span>
+                <span className='text-right font-medium text-white/[0.88]'>
+                  {data.productAmountLabel}
                 </span>
+              </div>
+              {data.quantity && data.quantity > 1 && (
+                <div className='flex items-center justify-between gap-4'>
+                  <span className='text-sm text-white/[0.44]'>Jumlah</span>
+                  <span className='text-right font-mono font-semibold text-white'>
+                    {data.quantity}x
+                  </span>
+                </div>
+              )}
+              <div className='flex items-center justify-between gap-4'>
+                <span className='text-sm text-white/[0.44]'>Pembayaran</span>
                 <div className='flex items-center justify-end gap-2.5'>
                   <PaymentLogo
                     src={data.paymentMethodImage}
@@ -193,27 +201,16 @@ export default function ConfirmationModal ({
                     code={data.paymentMethodCode}
                     isQris={data.isQris}
                   />
-                  {/* Tambahkan leading-none agar tidak ada spasi bawaan line-height */}
-                  <span className='text-right text-sm font-medium text-white leading-none'>
+                  <span className='text-right font-medium text-white/[0.88] leading-none'>
                     {data.paymentMethodName || '-'}
                   </span>
                 </div>
               </div>
               <div className='flex items-center justify-between gap-4'>
-                <span className='shrink-0 whitespace-nowrap text-xs text-white/[0.52]'>
-                  Harga produk
-                </span>
-                <span className='text-right text-sm font-medium text-white'>
-                  {data.productAmountLabel}
-                </span>
-              </div>
-              <div className='flex items-center justify-between gap-4'>
-                <span className='shrink-0 whitespace-nowrap text-xs text-white/[0.52]'>
-                  Biaya metode
-                </span>
+                <span className='text-sm text-white/[0.44]'>Biaya metode</span>
                 <span
-                  className={`text-right text-sm font-medium ${
-                    isSurchargeActive
+                  className={`text-right font-medium ${
+                    isSurchargeActive && data.surchargeLabel !== 'Rp 0'
                       ? 'text-amber-200/[0.82]'
                       : 'text-emerald-300/[0.82]'
                   }`}
@@ -226,9 +223,38 @@ export default function ConfirmationModal ({
             </div>
           </div>
 
-          {/* Total Bayar */}
+          {/* GRUP 3: INFORMASI TAMBAHAN (KONDISIONAL) */}
+          {hasAdditionalInfo && (
+            <div className='border-t border-white/[0.08] pt-5 mt-1'>
+              <p className='mb-3 font-mono text-[10px] uppercase tracking-[0.12em] text-white/[0.88]'>
+                INFORMASI TAMBAHAN
+              </p>
+              <div className='space-y-3 text-sm'>
+                {data.contactInfo && (
+                  <div className='flex items-center justify-between gap-4'>
+                    <span className='text-sm text-white/[0.44]'>Kontak</span>
+                    <span className='break-all text-right text-sm font-medium text-white/[0.88]'>
+                      {data.contactInfo}
+                    </span>
+                  </div>
+                )}
+                {data.appliedPromoCode && (
+                  <div className='flex items-center justify-between gap-4'>
+                    <span className='text-sm text-white/[0.44]'>
+                      Kode promo
+                    </span>
+                    <span className='text-right font-mono text-sm font-semibold text-fuchsia-300'>
+                      {data.appliedPromoCode}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* TOTAL BAYAR (CYAN) */}
           <div className='flex items-baseline justify-between border-t border-white/[0.08] pt-4'>
-            <span className='text-sm font-semibold uppercase tracking-wide text-white'>
+            <span className='font-medium text-sm uppercase tracking-[0.1em] text-white'>
               TOTAL BAYAR
             </span>
             <span className='text-2xl font-bold tracking-tight text-cyan-400'>
@@ -238,7 +264,7 @@ export default function ConfirmationModal ({
         </div>
 
         {/* Action Button */}
-        <div className='mt-6'>
+        <div className='relative z-10 mt-6'>
           <button
             type='button'
             onClick={onConfirm}
