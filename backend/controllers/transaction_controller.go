@@ -1596,7 +1596,10 @@ func SearchOrder(c *fiber.Ctx) error {
 // 6. CHECK TRANSACTION STATUS
 // ==========================================
 func CheckTransactionStatus(c *fiber.Ctx) error {
-	invoiceID := c.Params("invoice")
+	invoiceID := strings.TrimSpace(c.Params("invoice"))
+	if invoiceID == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "invoice id is required"})
+	}
 	reference := strings.TrimSpace(c.Query("reference"))
 
 	var trx models.Transaction

@@ -379,7 +379,7 @@ func buildMidtransSnapPayload(
 				midtransDefaultCustomerPhone(),
 			),
 		},
-		
+
 		EnabledPayments: []string{selected.ProviderMethod},
 	}
 	if selected.ProviderMethod == "google_pay" ||
@@ -659,10 +659,11 @@ func checkoutWithMidtrans(
 		updates["payment_code"] = strings.TrimSpace(chargeResp.PaymentCode)
 	}
 	for _, act := range chargeResp.Actions {
-		if act.Name == "generate-qr-code" {
-			updates["qr_url"] = strings.TrimSpace(act.URL)
-		} else if act.Name == "deeplink-redirect" {
-			updates["deeplink_url"] = strings.TrimSpace(act.URL)
+		switch act.Name {
+		case "generate-qr-code":
+			updates["qr_url"] = act.URL
+		case "deeplink-redirect":
+			updates["deeplink_url"] = act.URL
 		}
 	}
 
@@ -865,6 +866,10 @@ func MidtransCallbackHandler(c *fiber.Ctx) error {
 			"success": false,
 			"reason":  "invalid callback body",
 		})
+	}
+	// If Midtrans callback does not include order_id, ignore it gracefully.
+	if strings.TrimSpace(notification.OrderID) == "" {
+		return c.JSON(fiber.Map{"success": true})
 	}
 	if !isValidMidtransSignature(notification, serverKey) {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
