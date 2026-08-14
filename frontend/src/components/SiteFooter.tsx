@@ -630,7 +630,7 @@ export default function SiteFooter () {
                   onClick={scrollToTop}
                   tabIndex={focusTabIndex}
                   aria-label='Kembali ke atas'
-                  className='footer-glass-pill pointer-events-auto group flex h-11 w-11 cursor-pointer items-center justify-center rounded-full text-white/[0.5] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:ring-offset-2 focus-visible:ring-offset-black'
+                  className='footer-glass-pill pointer-events-auto group flex h-11 w-11 cursor-pointer items-center justify-center rounded-full text-white/[0.5] hover:text-white focus-visible:outline-none'
                 >
                   <svg
                     aria-hidden='true'

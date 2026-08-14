@@ -23,8 +23,6 @@ func SetupRoutes(app *fiber.App) {
 	api.Get("/payment-config", controllers.GetMidtransPaymentConfig)
 	api.Get("/payment-methods", controllers.GetMidtransPaymentMethods)
 	api.Post("/checkout", controllers.Checkout)
-	api.Post("/callback", controllers.TripayCallbackHandler)
-	api.Post("/callback/duitku", controllers.DuitkuCallbackHandler)
 	api.Post("/callback/midtrans", controllers.MidtransCallbackHandler)
 	api.Post("/webhook/digiflazz", controllers.DigiflazzWebhookHandler)
 	api.Post("/search-order", controllers.SearchOrder)

@@ -478,14 +478,6 @@ func migratePaymentFoundation() error {
 	return DB.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Exec(`
 			UPDATE transactions
-			SET payment_provider = 'tripay'
-			WHERE COALESCE(BTRIM(payment_provider), '') = ''
-		`).Error; err != nil {
-			return err
-		}
-
-		if err := tx.Exec(`
-			UPDATE transactions
 			SET payment_reference = reference
 			WHERE COALESCE(BTRIM(payment_reference), '') = ''
 			  AND COALESCE(BTRIM(reference), '') <> ''
@@ -513,10 +505,12 @@ func seedDefaultSettings() error {
 	defaultSettings := []models.Setting{
 		{Key: "margin_percent", Value: "5"},
 		{Key: "flat_fee", Value: "0"},
-		{Key: "payment_gateway", Value: "duitku"},
+		{Key: "payment_gateway", Value: "midtrans"},
 		{Key: "payment_fee_bearer", Value: "MERCHANT"},
 		{Key: "minimum_net_profit", Value: "1500"},
 		{Key: "minimum_profit_retention_percent", Value: "50"},
+		{Key: "payment_surcharge_profit_retention_percent", Value: "70"},
+		{Key: "payment_max_customer_surcharge_percent", Value: "30"},
 	}
 
 	fmt.Println("🌱 Ensuring Default Settings...")
@@ -534,6 +528,14 @@ func seedDefaultSettings() error {
 					err,
 				)
 			}
+		}
+
+		// Gateway lama sudah tidak didukung. Hanya normalisasi value legacy;
+		// setting lain yang pernah diubah admin tetap dibiarkan apa adanya.
+		if err := tx.Model(&models.Setting{}).
+			Where("key = ? AND LOWER(BTRIM(value)) IN ?", "payment_gateway", []string{"duitku", "tripay"}).
+			Update("value", "midtrans").Error; err != nil {
+			return fmt.Errorf("gagal memigrasikan payment_gateway ke Midtrans: %w", err)
 		}
 
 		return nil

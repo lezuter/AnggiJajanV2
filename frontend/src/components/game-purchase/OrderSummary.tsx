@@ -96,12 +96,18 @@ export default function OrderSummary ({
           <dt className='text-white/[0.44]'>Biaya metode</dt>
           <dd
             className={`text-right text-sm ${
-              hasCustomerSurcharge
+              customerSurchargeLabel === '—'
+                ? 'text-white/[0.88]'
+                : hasCustomerSurcharge
                 ? 'font-medium text-amber-200/[0.82]'
                 : 'font-medium text-emerald-300/[0.82]'
             }`}
           >
-            {hasCustomerSurcharge ? customerSurchargeLabel : 'Rp 0'}
+            {customerSurchargeLabel === '—'
+              ? '—'
+              : hasCustomerSurcharge
+              ? customerSurchargeLabel
+              : 'Rp 0'}
           </dd>
         </div>
       </dl>
@@ -145,7 +151,7 @@ export default function OrderSummary ({
         type='button'
         onClick={onCheckout}
         disabled={!canCheckout || isProcessing}
-        className={`mt-7 min-h-12 w-full rounded-full border px-5 text-sm font-semibold outline-none transition-[border-color,background-color,color,box-shadow] duration-300 focus-visible:ring-2 focus-visible:ring-fuchsia-400/70 ${
+        className={`mt-7 min-h-12 w-full rounded-full border px-5 text-sm font-semibold outline-none transition-[border-color,background-color,color,box-shadow] duration-300 ${
           !canCheckout || isProcessing
             ? 'cursor-not-allowed border-white/[0.06] bg-white/[0.045] text-white/[0.34]'
             : 'border-white bg-white text-black hover:border-fuchsia-300 hover:bg-fuchsia-300 hover:shadow-[0_12px_34px_rgba(217,70,239,0.18)]'

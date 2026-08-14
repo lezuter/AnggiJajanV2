@@ -203,7 +203,7 @@ function RecommendationCard({
       type="button"
       aria-pressed={selected}
       onClick={() => onSelect(method.quote_key)}
-      className={`group flex min-h-[96px] items-center gap-3 rounded-[18px] border p-4 text-left outline-none transition-[border-color,background-color,box-shadow] duration-300 focus-visible:ring-2 focus-visible:ring-fuchsia-400/70 ${
+      className={`group flex min-h-[96px] items-center gap-3 rounded-[18px] border p-4 text-left outline-none transition-[border-color,background-color,box-shadow] duration-300 ${
         selected
           ? "border-fuchsia-300/55 bg-fuchsia-400/[0.075] shadow-[0_16px_42px_rgba(217,70,239,0.1)]"
           : "border-white/[0.08] bg-white/[0.025] hover:border-white/[0.16] hover:bg-white/[0.045]"
@@ -256,7 +256,7 @@ function PaymentMethodCard({
       aria-pressed={selected}
       disabled={!method.enabled}
       onClick={onSelect}
-      className={`group flex min-h-[88px] items-center gap-3 rounded-[18px] border p-4 text-left outline-none transition-[border-color,background-color,box-shadow] duration-300 focus-visible:ring-2 focus-visible:ring-fuchsia-400/70 ${
+      className={`group flex min-h-[88px] items-center gap-3 rounded-[18px] border p-4 text-left outline-none transition-[border-color,background-color,box-shadow] duration-300 ${
         !method.enabled
           ? "cursor-not-allowed border-white/[0.055] bg-white/[0.018] opacity-55"
           : selected

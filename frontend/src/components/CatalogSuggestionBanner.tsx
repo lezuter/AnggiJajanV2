@@ -266,7 +266,7 @@ export default function CatalogSuggestionBanner ({
           >
             <Link
               href={href}
-              className='group relative isolate inline-flex min-h-12 items-center justify-center gap-3 overflow-hidden rounded-full border border-white/[0.13] bg-black/[0.18] px-5 font-mono text-[10px] font-medium uppercase tracking-[0.09em] text-white/[0.9] shadow-[0_14px_42px_rgba(0,0,0,0.28),inset_0_1px_0_rgba(255,255,255,0.12),inset_0_-1px_0_rgba(255,255,255,0.02)] backdrop-blur-xl backdrop-saturate-150 transition-[border-color,background-color,color,box-shadow] duration-300 hover:border-white/[0.22] hover:bg-black/[0.1] hover:text-white hover:shadow-[0_18px_48px_rgba(0,0,0,0.32),inset_0_1px_0_rgba(255,255,255,0.17)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/[0.6] focus-visible:ring-offset-2 focus-visible:ring-offset-black sm:min-h-13 sm:px-6 sm:text-[11px]'
+              className='group relative isolate inline-flex min-h-12 items-center justify-center gap-3 overflow-hidden rounded-full border border-white/[0.13] bg-black/[0.18] px-5 font-mono text-[10px] font-medium uppercase tracking-[0.09em] text-white/[0.9] shadow-[0_14px_42px_rgba(0,0,0,0.28),inset_0_1px_0_rgba(255,255,255,0.12),inset_0_-1px_0_rgba(255,255,255,0.02)] backdrop-blur-xl backdrop-saturate-150 transition-[border-color,background-color,color,box-shadow] duration-300 hover:border-white/[0.22] hover:bg-black/[0.1] hover:text-white hover:shadow-[0_18px_48px_rgba(0,0,0,0.32),inset_0_1px_0_rgba(255,255,255,0.17)] focus-visible:outline-none sm:min-h-13 sm:px-6 sm:text-[11px]'
             >
               <span
                 aria-hidden='true'

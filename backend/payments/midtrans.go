@@ -4,9 +4,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"net/http"
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
 
 const (
@@ -414,4 +416,30 @@ func (config MidtransConfig) StartingPrice(targetNet float64) (float64, error) {
 	}
 
 	return float64(low), nil
+}
+
+// ExpireMidtransTransaction memicu API expire resmi Midtrans
+func ExpireMidtransTransaction(orderID string, serverKey string) error {
+	url := fmt.Sprintf("https://api.midtrans.com/v2/%s/expire", orderID)
+
+	req, err := http.NewRequest("POST", url, nil)
+	if err != nil {
+		return err
+	}
+
+	req.SetBasicAuth(serverKey, "")
+	req.Header.Set("Accept", "application/json")
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNotFound {
+		return fmt.Errorf("midtrans expire API status: %d", resp.StatusCode)
+	}
+
+	return nil
 }

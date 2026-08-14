@@ -215,12 +215,12 @@ const formatIDR = (value?: number) =>
         currency: 'IDR',
         maximumFractionDigits: 0
       }).format(value)
-    : 'Belum tersedia saat layanan dibuka'
+    : '—'
 
 const summaryRows = (gameName: string, product: any, target: string) => [
   ['Game', gameName],
-  ['Produk', product ? product.name : '-'], // Bersih, tanpa ada (quantity + 'x') di sini
-  ['Target', target]
+  ['Produk', product ? product.name : '—'],
+  ['Target', target || '—']
 ]
 
 export default function GameDetailClient ({ slug }: { slug: string }) {
@@ -497,21 +497,22 @@ export default function GameDetailClient ({ slug }: { slug: string }) {
   const selectedPaymentMethod = paymentMethods.find(
     method => method.quote_key === selectedQuoteKey
   )
-  const paymentMethodLabel = selectedPaymentMethod?.name || 'Belum dipilih'
+  const paymentMethodLabel = selectedPaymentMethod?.name || '—'
 
   const unitPrice = selectedProduct
     ? selectedPaymentMethod?.base_price ??
       getProductStartingPrice(selectedProduct)
-    : 0
-  const productAmount = selectedProduct ? unitPrice * quantity : undefined
-  const productAmountLabel = selectedProduct
-    ? formatIDR(getProductStartingPrice(selectedProduct))
-    : 'Belum dipilih'
+    : undefined
+
+  const productAmountLabel =
+    selectedProduct && typeof unitPrice === 'number'
+      ? formatIDR(unitPrice)
+      : '—'
 
   const customerSurcharge = selectedPaymentMethod?.customer_surcharge ?? 0
   const customerSurchargeLabel = selectedPaymentMethod
     ? formatIDR(customerSurcharge)
-    : 'Belum tersedia'
+    : '—'
 
   const totalAmount = selectedPaymentMethod
     ? selectedPaymentMethod.base_price * quantity + customerSurcharge
@@ -520,7 +521,7 @@ export default function GameDetailClient ({ slug }: { slug: string }) {
     : undefined
 
   const totalLabel =
-    typeof totalAmount === 'number' ? formatIDR(totalAmount) : 'Belum tersedia'
+    typeof totalAmount === 'number' ? formatIDR(totalAmount) : '—'
 
   const appliedPromoCode = promoCode.trim() || undefined
 
@@ -640,6 +641,12 @@ export default function GameDetailClient ({ slug }: { slug: string }) {
   const handleCheckout = async () => {
     if (!PURCHASES_ENABLED) return
 
+    // GUARD CLAUSE: Pastikan selectedProduct tidak null sebelum diakses
+    if (!selectedProduct) {
+      alert('Mohon pilih produk terlebih dahulu.')
+      return
+    }
+
     if (!userId || !selectedProduct || (requiresZone && !zoneId)) {
       alert(
         requiresZone && !zoneId
@@ -653,8 +660,6 @@ export default function GameDetailClient ({ slug }: { slug: string }) {
     setShowConfirmModal(false)
 
     try {
-      await prepareMidtransSnap()
-
       const res = await fetch(`${API_BASE_URL}/checkout`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -684,26 +689,7 @@ export default function GameDetailClient ({ slug }: { slug: string }) {
       if (res.ok) {
         const checkoutData = (result.data || result) as CheckoutData
         setTransactionData(checkoutData)
-
-        if (checkoutData.snap_token) {
-          // @ts-ignore
-          window.snap.pay(checkoutData.snap_token, {
-            onSuccess: () => {
-              setShowModal(true)
-            },
-            onPending: () => {
-              router.push('/cek-pesanan/')
-            },
-            onError: () => {
-              setShowModal(true)
-            },
-            onClose: () => {
-              router.push('/cek-pesanan/')
-            }
-          })
-        } else {
-          setShowModal(true)
-        }
+        setShowModal(true) // LANGSUNG TAMPILKAN CUSTOM PAYMENT MODAL ANGGIJAJAN
       } else {
         alert(
           'Gagal: ' +
@@ -767,7 +753,7 @@ export default function GameDetailClient ({ slug }: { slug: string }) {
             <button
               type='button'
               onClick={() => router.push('/#game')}
-              className='mt-8 min-h-12 rounded-full border border-white bg-white px-7 text-sm font-semibold text-black transition-[border-color,background-color,box-shadow] duration-300 hover:border-fuchsia-300 hover:bg-fuchsia-300 hover:shadow-[0_12px_34px_rgba(217,70,239,0.18)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-400/70'
+              className='mt-8 min-h-12 rounded-full border border-white bg-white px-7 text-sm font-semibold text-black transition-[border-color,background-color,box-shadow] duration-300 hover:border-fuchsia-300 hover:bg-fuchsia-300 hover:shadow-[0_12px_34px_rgba(217,70,239,0.18)] focus-visible:outline-none'
             >
               Kembali ke katalog
             </button>
@@ -962,17 +948,17 @@ export default function GameDetailClient ({ slug }: { slug: string }) {
           userId,
           zoneId,
           gameName: game.name,
-          productName: selectedProduct?.name || '-', // Nama produk murni tanpa (2x)
-          quantity: quantity, // Kuantitas pembelian
-          contactInfo: contactInfo.trim() || undefined, // Kontak (email/WhatsApp)
+          productName: selectedProduct?.name || '-', // Nama produk murni
+          quantity: quantity, // Jumlah kuantitas
+          contactInfo: contactInfo.trim() || undefined, // Kontak
           paymentMethodName: paymentMethodLabel,
           paymentMethodImage: selectedPaymentMethod?.image_url,
           paymentMethodCode: selectedPaymentMethod?.code,
           isQris: selectedPaymentMethod?.category === 'QRIS',
-          productAmountLabel, // Subtotal harga produk x quantity
+          productAmountLabel, // Harga Satuan
           surchargeLabel: customerSurchargeLabel,
           hasCustomerSurcharge: customerSurcharge > 0,
-          appliedPromoCode: appliedPromoCode, // Kode promo yang terpasang
+          appliedPromoCode: promoCode.trim() || undefined, // Kode Promo
           totalLabel
         }}
       />

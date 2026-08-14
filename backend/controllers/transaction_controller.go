@@ -6,7 +6,6 @@ import (
 	"crypto/hmac"
 	"crypto/md5"
 	"crypto/sha1"
-	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -746,16 +745,6 @@ func ManualOrder(c *fiber.Ctx) error {
 		})
 	}
 
-	tripayMaxAmount := 5000000.0
-	if sellingPrice > tripayMaxAmount {
-		return c.Status(400).JSON(fiber.Map{
-			"error": fmt.Sprintf(
-				"Nominal QRIS Tripay maksimal Rp %.0f",
-				tripayMaxAmount,
-			),
-		})
-	}
-
 	profit := sellingPrice - capital
 
 	invoiceID := fmt.Sprintf("INV-MANUAL-%d", time.Now().UnixNano()/1000000)
@@ -772,64 +761,32 @@ func ManualOrder(c *fiber.Ctx) error {
 	}
 	providerName := providerDisplayName(provider)
 
-	tripayMethod := strings.TrimSpace(os.Getenv("TRIPAY_METHOD"))
-	if tripayMethod == "" {
-		tripayMethod = "QRIS2"
-	}
-
-	tripay, err := requestTripay(
-		invoiceID,
-		int(sellingPrice),
-		tripayMethod,
-		p.Name,
-		req.TargetID,
-	)
-
+	statusReference, err := generateSecureReference(16)
 	if err != nil {
-		return c.Status(502).JSON(fiber.Map{
-			"error":  "Gagal menghubungi Tripay",
-			"reason": err.Error(),
-		})
-	}
-
-	if !tripay.Success {
-		reason := strings.TrimSpace(tripay.Message)
-		if reason == "" {
-			reason = "Tripay menolak request QRIS"
-		}
-
-		return c.Status(400).JSON(fiber.Map{
-			"error":  "Gagal membuat QRIS Tripay",
-			"reason": reason,
-		})
-	}
-
-	paymentURL := strings.TrimSpace(tripay.Data.QrUrl)
-	if paymentURL == "" {
-		paymentURL = strings.TrimSpace(tripay.Data.CheckoutURL)
-	}
-
-	if paymentURL == "" {
-		return c.Status(500).JSON(fiber.Map{
-			"error":  "Tripay berhasil dibuat tapi payment_url kosong",
-			"reason": "qr_url dan checkout_url kosong dari response Tripay",
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Gagal membuat referensi pembayaran",
 		})
 	}
 
 	trx := models.Transaction{
-		InvoiceID:         invoiceID,
-		ProductID:         p.ID,
-		CustomerPhone:     req.TargetID,
-		Amount:            sellingPrice,
-		Capital:           capital,
-		Profit:            profit,
-		Status:            "UNPAID",
-		PaymentStatus:     "UNPAID",
-		FulfillmentStatus: "WAITING_PAYMENT",
-		ProviderStatus:    "Waiting Payment",
-		PaymentMethod:     tripayMethod,
-		PaymentURL:        paymentURL,
-		Reference:         tripay.Data.Reference,
+		InvoiceID:          invoiceID,
+		ProductID:          p.ID,
+		CustomerPhone:      req.TargetID,
+		Amount:             sellingPrice,
+		Capital:            capital,
+		Profit:             profit,
+		Status:             "UNPAID",
+		PaymentStatus:      "UNPAID",
+		FulfillmentStatus:  "WAITING_PAYMENT",
+		ProviderStatus:     "Waiting Payment",
+		ProductAmount:      sellingPrice,
+		StartingPrice:      sellingPrice,
+		PaymentProvider:    "midtrans",
+		PaymentQuoteKey:    midtransQuoteKey("qris"),
+		PaymentMethod:      "qris",
+		PaymentFeeBearer:   "MERCHANT",
+		NetProfitEstimated: profit,
+		Reference:          statusReference,
 
 		Provider:     provider,
 		ProviderSKU:  p.Code,
@@ -844,6 +801,45 @@ func ManualOrder(c *fiber.Ctx) error {
 
 	if err := database.DB.Create(&trx).Error; err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": "Gagal simpan transaksi ke DB"})
+	}
+
+	manualPayment := midtransPaymentMethodOption{
+		ProviderMethod: "qris",
+		TotalAmount:    sellingPrice,
+		ProductAmount:  sellingPrice,
+		BasePrice:      sellingPrice,
+	}
+	payload := buildMidtransSnapPayload(invoiceID, p, manualPayment, models.CheckoutRequest{
+		CustomerPhone: req.TargetID,
+		CustomerName:  "Admin Anggijajan",
+	})
+	requestContext, cancel := context.WithTimeout(c.UserContext(), 20*time.Second)
+	defer cancel()
+	snap, err := createMidtransSnap(requestContext, payload)
+	if err != nil {
+		_ = database.DB.Model(&trx).Updates(map[string]interface{}{
+			"status":          "FAILED",
+			"payment_status":  "FAILED",
+			"provider_status": "Payment Request Failed",
+			"error_message":   err.Error(),
+		}).Error
+		return c.Status(fiber.StatusBadGateway).JSON(fiber.Map{
+			"error":  "Gagal membuat QRIS Midtrans",
+			"reason": err.Error(),
+		})
+	}
+
+	trx.SnapToken = strings.TrimSpace(snap.Token)
+	trx.PaymentURL = strings.TrimSpace(snap.RedirectURL)
+	if err := database.DB.Model(&trx).Updates(map[string]interface{}{
+		"snap_token":      trx.SnapToken,
+		"payment_url":     trx.PaymentURL,
+		"provider_status": "Waiting Payment",
+		"error_message":   "",
+	}).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Pembayaran Midtrans dibuat tetapi gagal menyimpan detailnya",
+		})
 	}
 
 	actorName := fmt.Sprintf("Admin #%d", adminID)
@@ -1127,17 +1123,6 @@ func TripayCallbackHandler(c *fiber.Ctx) error {
 		fmt.Println("X-CALLBACK-EVENT:", c.Get("X-Callback-Event"))
 		fmt.Println("SIGNATURE PRESENT:", strings.TrimSpace(callbackSignature) != "")
 		fmt.Println("===============================")
-	}
-
-	if !isValidTripayCallbackSignature(rawBody, callbackSignature) {
-		if isDebug {
-			fmt.Println("TRIPAY CALLBACK SIGNATURE INVALID")
-		}
-
-		return c.Status(401).JSON(fiber.Map{
-			"success": false,
-			"reason":  "invalid callback signature",
-		})
 	}
 
 	if err := json.Unmarshal(rawBody, &cb); err != nil {
@@ -1641,6 +1626,7 @@ func CheckTransactionStatus(c *fiber.Ctx) error {
 		"fulfillment_status": trx.FulfillmentStatus,
 		"provider_status":    customerSafeProviderStatus(trx),
 		"sn":                 snToReturn,
+		"expiry_time":        trx.ExpiryTime,
 	})
 }
 
@@ -1760,179 +1746,6 @@ func ProcessTopup(invoiceID string, product models.Product, target string) (stat
 	status, message, err = ProcessTopupWithRef(providerRef, product, target)
 
 	return status, message, providerRef, err
-}
-
-// ==========================================
-// 9. TRIPAY HELPER
-// ==========================================
-type tripayResponse struct {
-	Success bool   `json:"success"`
-	Message string `json:"message"`
-	Data    struct {
-		Reference   string  `json:"reference"`
-		MerchantRef string  `json:"merchant_ref"`
-		PaymentName string  `json:"payment_name"`
-		CheckoutURL string  `json:"checkout_url"`
-		PayURL      string  `json:"pay_url"`
-		QrUrl       string  `json:"qr_url"`
-		QrString    string  `json:"qr_string"`
-		PayCode     string  `json:"pay_code"`
-		Amount      int     `json:"amount"`
-		FeeMerchant float64 `json:"fee_merchant"`
-		FeeCustomer float64 `json:"fee_customer"`
-	} `json:"data"`
-}
-
-func requestTripay(invoiceID string, amount int, method string, productName string, phone string) (tripayResponse, error) {
-	return requestTripayWithContext(
-		context.Background(),
-		invoiceID,
-		amount,
-		method,
-		"PROD-01",
-		productName,
-		phone,
-		"Pelanggan AnggiJajan",
-		"customer@anggijajan.com",
-	)
-}
-
-func requestTripayWithContext(
-	ctx context.Context,
-	invoiceID string,
-	amount int,
-	method string,
-	productSKU string,
-	productName string,
-	phone string,
-	customerName string,
-	customerEmail string,
-) (tripayResponse, error) {
-	apiKey := strings.TrimSpace(os.Getenv("TRIPAY_API_KEY"))
-	privateKey := strings.TrimSpace(os.Getenv("TRIPAY_PRIVATE_KEY"))
-	merchantCode := strings.TrimSpace(os.Getenv("TRIPAY_MERCHANT_CODE"))
-	mode := strings.ToLower(strings.TrimSpace(os.Getenv("TRIPAY_MODE")))
-	callbackURL := strings.TrimSpace(os.Getenv("TRIPAY_CALLBACK_URL"))
-	if apiKey == "" || privateKey == "" || merchantCode == "" {
-		return tripayResponse{}, fmt.Errorf("konfigurasi credential Tripay belum lengkap")
-	}
-
-	baseURL := "https://tripay.co.id/api-sandbox/transaction/create"
-	if mode == "production" {
-		baseURL = "https://tripay.co.id/api/transaction/create"
-	}
-
-	if isAppDebug() {
-		fmt.Println("===== TRIPAY REQUEST =====")
-		fmt.Println("MODE:", mode)
-		fmt.Println("BASE URL:", baseURL)
-		fmt.Println("CALLBACK URL:", callbackURL)
-		fmt.Println("INVOICE:", invoiceID)
-		fmt.Println("==========================")
-	}
-
-	signatureStr := fmt.Sprintf("%s%s%d", merchantCode, invoiceID, amount)
-
-	h := hmac.New(sha256.New, []byte(privateKey))
-	h.Write([]byte(signatureStr))
-
-	signature := hex.EncodeToString(h.Sum(nil))
-
-	payload := map[string]interface{}{
-		"method":         method,
-		"merchant_ref":   invoiceID,
-		"amount":         amount,
-		"customer_name":  firstNonEmpty(customerName, "Pelanggan AnggiJajan"),
-		"customer_email": firstNonEmpty(customerEmail, "customer@anggijajan.com"),
-		"customer_phone": phone,
-		"order_items": []map[string]interface{}{
-			{
-				"sku":      firstNonEmpty(productSKU, "PROD-01"),
-				"name":     productName,
-				"price":    amount,
-				"quantity": 1,
-			},
-		},
-		"callback_url": callbackURL,
-		"expired_time": time.Now().Add(24 * time.Hour).Unix(),
-		"signature":    signature,
-	}
-
-	jsonPayload, err := json.Marshal(payload)
-	if err != nil {
-		return tripayResponse{}, fmt.Errorf("gagal membentuk inquiry Tripay: %w", err)
-	}
-
-	req, err := http.NewRequestWithContext(
-		ctx,
-		http.MethodPost,
-		baseURL,
-		bytes.NewBuffer(jsonPayload),
-	)
-	if err != nil {
-		return tripayResponse{}, fmt.Errorf("gagal membuat inquiry Tripay: %w", err)
-	}
-	req.Header.Set("Authorization", "Bearer "+apiKey)
-	req.Header.Set("Content-Type", "application/json")
-
-	client := &http.Client{Timeout: 15 * time.Second}
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return tripayResponse{}, err
-	}
-
-	defer resp.Body.Close()
-
-	bodyBytes, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	if err != nil {
-		return tripayResponse{}, fmt.Errorf("gagal membaca inquiry Tripay: %w", err)
-	}
-
-	if isAppDebug() {
-		fmt.Println("===== TRIPAY RESPONSE =====")
-		fmt.Println("HTTP STATUS:", resp.StatusCode)
-		fmt.Println("INVOICE:", invoiceID)
-		fmt.Println("===========================")
-	}
-
-	var tripayResp tripayResponse
-
-	if err := json.Unmarshal(bodyBytes, &tripayResp); err != nil {
-		return tripayResponse{}, fmt.Errorf(
-			"response inquiry Tripay tidak valid (HTTP %d): %w",
-			resp.StatusCode,
-			err,
-		)
-	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return tripayResponse{}, fmt.Errorf(
-			"Tripay HTTP %d: %s",
-			resp.StatusCode,
-			firstNonEmpty(tripayResp.Message, http.StatusText(resp.StatusCode)),
-		)
-	}
-
-	return tripayResp, nil
-}
-
-func isValidTripayCallbackSignature(rawBody []byte, receivedSignature string) bool {
-	privateKey := strings.TrimSpace(os.Getenv("TRIPAY_PRIVATE_KEY"))
-	receivedSignature = strings.TrimSpace(receivedSignature)
-
-	if privateKey == "" || receivedSignature == "" {
-		return false
-	}
-
-	h := hmac.New(sha256.New, []byte(privateKey))
-	h.Write(rawBody)
-
-	expectedSignature := hex.EncodeToString(h.Sum(nil))
-
-	return hmac.Equal(
-		[]byte(expectedSignature),
-		[]byte(receivedSignature),
-	)
 }
 
 // ==========================================

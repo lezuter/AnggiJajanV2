@@ -269,7 +269,7 @@ function CarouselDot ({
       style={{ width, opacity }}
       whileHover={shouldReduceMotion ? undefined : { scale: 1.08 }}
       whileTap={shouldReduceMotion ? undefined : { scale: 0.94 }}
-      className='h-2.5 shrink-0 rounded-full bg-white outline-none focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:ring-offset-2 focus-visible:ring-offset-black'
+      className='h-2.5 shrink-0 rounded-full bg-white outline-none'
       aria-label={label}
       aria-current={dotIndex === activeSlide ? 'true' : undefined}
     />
@@ -923,7 +923,7 @@ export default function HomePage () {
 
                   resetCarouselPosition()
                 }}
-                className='relative h-[580px] w-full min-w-0 cursor-grab touch-pan-y select-none overflow-hidden outline-none focus-visible:ring-2 focus-visible:ring-white/60 active:cursor-grabbing sm:h-[540px] md:h-[500px] lg:h-[430px]'
+                className='relative h-[580px] w-full min-w-0 cursor-grab touch-pan-y select-none overflow-hidden outline-none active:cursor-grabbing sm:h-[540px] md:h-[500px] lg:h-[430px]'
               >
                 {carouselWidth > 0 && (
                   <motion.div

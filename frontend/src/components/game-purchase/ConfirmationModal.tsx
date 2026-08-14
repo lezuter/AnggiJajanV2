@@ -115,7 +115,7 @@ export default function ConfirmationModal ({
 
   return (
     <div
-      className='fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md transition-opacity duration-200'
+      className='fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-md transition-opacity duration-200'
       onClick={onClose}
     >
       <div
@@ -207,15 +207,19 @@ export default function ConfirmationModal ({
                 </div>
               </div>
               <div className='flex items-center justify-between gap-4'>
-                <span className='text-sm text-white/[0.44]'>Biaya metode</span>
+                <span className='text-xs text-white/[0.44]'>Biaya metode</span>
                 <span
-                  className={`text-right font-medium ${
-                    isSurchargeActive && data.surchargeLabel !== 'Rp 0'
+                  className={`text-right text-sm font-medium ${
+                    data.surchargeLabel === '—'
+                      ? 'text-white/[0.88]'
+                      : isSurchargeActive && data.surchargeLabel !== 'Rp 0'
                       ? 'text-amber-200/[0.82]'
                       : 'text-emerald-300/[0.82]'
                   }`}
                 >
-                  {isSurchargeActive && data.surchargeLabel !== 'Rp 0'
+                  {data.surchargeLabel === '—'
+                    ? '—'
+                    : isSurchargeActive && data.surchargeLabel !== 'Rp 0'
                     ? data.surchargeLabel
                     : 'Rp 0'}
                 </span>
@@ -269,7 +273,7 @@ export default function ConfirmationModal ({
             type='button'
             onClick={onConfirm}
             disabled={isProcessing}
-            className='flex min-h-12 w-full items-center justify-center gap-2 rounded-full border border-white bg-white px-4 text-sm font-semibold text-black transition-all duration-300 hover:border-fuchsia-300 hover:bg-fuchsia-300 hover:shadow-[0_12px_34px_rgba(217,70,239,0.18)] focus-visible:ring-2 focus-visible:ring-fuchsia-400/70 disabled:opacity-50'
+            className='flex min-h-12 w-full items-center justify-center gap-2 rounded-full border border-white bg-white px-4 text-sm font-semibold text-black transition-all duration-300 hover:border-fuchsia-300 hover:bg-fuchsia-300 hover:shadow-[0_12px_34px_rgba(217,70,239,0.18)] disabled:opacity-50'
           >
             {isProcessing ? (
               <>

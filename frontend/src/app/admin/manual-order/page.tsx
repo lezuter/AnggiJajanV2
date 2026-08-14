@@ -496,25 +496,18 @@ export default function ManualOrderPage () {
   const webPrice = Math.round(modalProvider * 1.05)
   const sellingPrice = parseIDRInput(sellingPriceInput)
   const profit = sellingPrice - modalProvider
-  const tripayMaxAmount = 5000000
-
   const isPriceBelowModal = !!selectedProduct && sellingPrice < modalProvider
   const isPriceAboveWeb = !!selectedProduct && sellingPrice > webPrice
-  const isPriceAboveTripayMax =
-    !!selectedProduct && sellingPrice > tripayMaxAmount
   const isPriceValid =
     !!selectedProduct &&
     sellingPrice > 0 &&
     sellingPrice >= modalProvider &&
-    sellingPrice <= webPrice &&
-    sellingPrice <= tripayMaxAmount
+    sellingPrice <= webPrice
 
   const priceError = isPriceBelowModal
     ? `Harga jual tidak boleh di bawah modal (${formatIDR(modalProvider)})`
     : isPriceAboveWeb
     ? `Harga jual tidak boleh lebih dari harga web (${formatIDR(webPrice)})`
-    : isPriceAboveTripayMax
-    ? `Nominal QRIS Tripay maksimal ${formatIDR(tripayMaxAmount)}`
     : ''
 
   const handleSellingPriceChange = (value: string) => {
@@ -2330,7 +2323,7 @@ export default function ManualOrderPage () {
                         </div>
                         <p className='mt-2 text-xs leading-relaxed text-yellow-100/80'>
                           Backend belum mengirim payment_url. Cek response
-                          Tripay / field payment_url.
+                          Midtrans / field payment_url.
                         </p>
                       </div>
                     )}

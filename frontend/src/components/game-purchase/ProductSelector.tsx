@@ -118,7 +118,7 @@ function ProductOption ({
         showAccountWarning ? 'account-completion-warning' : undefined
       }
       onClick={() => onSelect(product)}
-      className={`group relative flex h-full min-h-[210px] flex-col overflow-hidden rounded-[18px] border p-3.5 text-center outline-none transition-[border-color,background-color,box-shadow,opacity,filter] duration-[400ms] ease-[cubic-bezier(0.22,1,0.36,1)] focus-visible:ring-2 focus-visible:ring-fuchsia-400/70 ${
+      className={`group relative flex h-full min-h-[210px] flex-col overflow-hidden rounded-[18px] border p-3.5 text-center outline-none transition-[border-color,background-color,box-shadow,opacity,filter] duration-[400ms] ease-[cubic-bezier(0.22,1,0.36,1)] ${
         !isAccountComplete
           ? 'cursor-not-allowed border-white/[0.08] bg-white/[0.025] opacity-45 saturate-50'
           : isSelected
@@ -293,7 +293,7 @@ export default function ProductSelector ({
     <section
       id='catalog'
       aria-labelledby='product-selector-title'
-      className='aj-public-glass relative rounded-[24px] p-5 shadow-[0_24px_80px_rgba(0,0,0,0.3)] sm:p-7'
+      className='aj-public-glass relative rounded-[24px] p-5 shadow-[0_24px_80px_rgba(0,0,0,0.3)] outline-none focus:outline-none focus-visible:outline-none sm:p-7'
     >
       <div>
         <p className='font-mono text-[10px] uppercase tracking-[0.12em] text-white/[0.42]'>
@@ -349,7 +349,7 @@ export default function ProductSelector ({
                         event.preventDefault()
                         scrollToSection(section.key)
                       }}
-                      className={`shrink-0 whitespace-nowrap rounded-full border px-4 py-2 text-sm font-medium transition-[border-color,background-color,color,box-shadow] duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-400/70 ${
+                      className={`shrink-0 whitespace-nowrap rounded-full border px-4 py-2 text-sm font-medium transition-[border-color,background-color,color,box-shadow] duration-300 focus-visible:outline-none ${
                         isActive
                           ? 'border-fuchsia-300/45 bg-fuchsia-400/[0.08] text-fuchsia-100 shadow-[0_8px_24px_rgba(217,70,239,0.12)]'
                           : 'border-white/[0.08] bg-white/[0.025] text-white/[0.52] hover:border-white/[0.16] hover:bg-white/[0.05] hover:text-white/[0.8]'

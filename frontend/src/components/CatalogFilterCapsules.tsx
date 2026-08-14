@@ -114,7 +114,7 @@ export default function CatalogFilterCapsules ({
                     ease: liquidEase
                   }
                 }}
-                className={`group relative isolate flex min-h-10 shrink-0 items-center gap-2 overflow-hidden rounded-full border px-3.5 py-2 font-mono text-[11px] font-medium uppercase tracking-[0.055em] outline-none backdrop-blur-md backdrop-saturate-150 transition-[border-color,color,box-shadow] duration-300 focus-visible:ring-2 focus-visible:ring-white/45 focus-visible:ring-offset-2 focus-visible:ring-offset-[#08080a] sm:min-h-11 sm:px-4 sm:text-xs ${
+                className={`group relative isolate flex min-h-10 shrink-0 items-center gap-2 overflow-hidden rounded-full border px-3.5 py-2 font-mono text-[11px] font-medium uppercase tracking-[0.055em] outline-none backdrop-blur-md backdrop-saturate-150 transition-[border-color,color,box-shadow] duration-300 sm:min-h-11 sm:px-4 sm:text-xs ${
                   isActive
                     ? 'border-white/[0.2] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.18),inset_0_-1px_0_rgba(255,255,255,0.025),0_14px_38px_rgba(0,0,0,0.28)]'
                     : 'border-white/[0.1] text-white/[0.68] shadow-[inset_0_-1px_0_rgba(255,255,255,0.015),0_10px_28px_rgba(0,0,0,0.18)] hover:border-white/[0.18] hover:text-white/[0.94]'

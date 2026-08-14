@@ -202,7 +202,7 @@ export default function CatalogSection ({
               duration: 0.28,
               ease: [0.22, 1, 0.36, 1]
             }}
-            className='relative isolate min-h-11 overflow-hidden rounded-full border border-white/[0.1] bg-white/[0.04] px-5 font-mono text-[10px] font-medium uppercase tracking-[0.1em] text-white/[0.76] shadow-[0_12px_38px_rgba(0,0,0,0.2),inset_0_1px_0_rgba(255,255,255,0.055)] backdrop-blur-xl backdrop-saturate-150 transition-colors hover:border-white/[0.18] hover:bg-white/[0.065] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/[0.6] focus-visible:ring-offset-2 focus-visible:ring-offset-black sm:min-h-12 sm:px-6 sm:text-[11px]'
+            className='relative isolate min-h-11 overflow-hidden rounded-full border border-white/[0.1] bg-white/[0.04] px-5 font-mono text-[10px] font-medium uppercase tracking-[0.1em] text-white/[0.76] shadow-[0_12px_38px_rgba(0,0,0,0.2),inset_0_1px_0_rgba(255,255,255,0.055)] backdrop-blur-xl backdrop-saturate-150 transition-colors hover:border-white/[0.18] hover:bg-white/[0.065] hover:text-white focus-visible:outline-none sm:min-h-12 sm:px-6 sm:text-[11px]'
           >
             <span
               aria-hidden='true'

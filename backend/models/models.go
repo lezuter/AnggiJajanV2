@@ -225,18 +225,19 @@ type Transaction struct {
 	// --- PAYMENT SNAPSHOT ---
 	// Dipisahkan dari Provider* karena Provider* khusus fulfillment/top-up
 	// seperti Digiflazz, ApiGames, atau manual.
-	PaymentProvider       string   `json:"payment_provider" gorm:"size:30;index"`
-	PaymentQuoteKey       string   `json:"payment_quote_key" gorm:"size:120;index"`
-	PaymentMethod         string   `json:"payment_method"`
-	PaymentURL            string   `json:"payment_url"`
-	PaymentReference      string   `json:"payment_reference" gorm:"size:100;index"`
-	PaymentFeeBearer      string   `json:"payment_fee_bearer" gorm:"size:20;index"`
-	PaymentFeeEstimated   float64  `json:"payment_fee_estimated" gorm:"not null;default:0"`
-	PaymentFeeActual      *float64 `json:"payment_fee_actual"`
-	NetProfitEstimated    float64  `json:"net_profit_estimated" gorm:"not null;default:0"`
-	NetProfitActual       *float64 `json:"net_profit_actual"`
-	MidtransTransactionID string   `json:"midtrans_transaction_id" gorm:"size:100;index"`
-	SnapToken             string   `json:"-" gorm:"type:text"`
+	PaymentProvider       string     `json:"payment_provider" gorm:"size:30;index"`
+	PaymentQuoteKey       string     `json:"payment_quote_key" gorm:"size:120;index"`
+	PaymentMethod         string     `json:"payment_method"`
+	PaymentURL            string     `json:"payment_url"`
+	PaymentReference      string     `json:"payment_reference" gorm:"size:100;index"`
+	PaymentFeeBearer      string     `json:"payment_fee_bearer" gorm:"size:20;index"`
+	PaymentFeeEstimated   float64    `json:"payment_fee_estimated" gorm:"not null;default:0"`
+	PaymentFeeActual      *float64   `json:"payment_fee_actual"`
+	NetProfitEstimated    float64    `json:"net_profit_estimated" gorm:"not null;default:0"`
+	NetProfitActual       *float64   `json:"net_profit_actual"`
+	MidtransTransactionID string     `json:"midtrans_transaction_id" gorm:"size:100;index"`
+	SnapToken             string     `json:"-" gorm:"type:text"`
+	ExpiryTime            *time.Time `gorm:"index" json:"expiry_time,omitempty"`
 
 	// Legacy/external reference. Dipertahankan sementara agar flow lama tidak rusak.
 	Reference string `json:"reference"`

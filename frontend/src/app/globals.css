@@ -39,8 +39,7 @@ body {
 }
 
 :focus-visible {
-  outline: 2px solid var(--aj-accent);
-  outline-offset: 3px;
+  outline: none;
 }
 
 ::selection {

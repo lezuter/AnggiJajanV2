@@ -78,11 +78,11 @@ function CatalogArtwork ({
 
 const cardClassNames: Record<CatalogCardVariant, string> = {
   featured:
-    'group relative block aspect-[16/10] overflow-hidden rounded-[22px] border border-white/[0.1] bg-black/[0.06] shadow-[0_20px_60px_rgba(0,0,0,0.24)] transition-[transform,border-color,box-shadow] duration-500 ease-out hover:-translate-y-1 hover:border-white/[0.2] hover:shadow-[0_26px_80px_rgba(59,130,246,0.12)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/[0.5]',
+    'group relative block aspect-[16/10] overflow-hidden rounded-[22px] border border-white/[0.1] bg-black/[0.06] shadow-[0_20px_60px_rgba(0,0,0,0.24)] transition-[transform,border-color,box-shadow] duration-500 ease-out hover:-translate-y-1 hover:border-white/[0.2] hover:shadow-[0_26px_80px_rgba(59,130,246,0.12)] focus-visible:outline-none',
   poster:
-    'group relative block aspect-[4/5] overflow-hidden rounded-[18px] border border-white/[0.08] bg-black/[0.035] shadow-[0_18px_50px_rgba(0,0,0,0.2)] transition-[border-color,box-shadow] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] hover:border-white/[0.14] hover:shadow-[0_26px_68px_rgba(0,0,0,0.32),0_8px_28px_rgba(255,255,255,0.035)] focus-visible:border-white/[0.14] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/[0.5]',
+    'group relative block aspect-[4/5] overflow-hidden rounded-[18px] border border-white/[0.08] bg-black/[0.035] shadow-[0_18px_50px_rgba(0,0,0,0.2)] transition-[border-color,box-shadow] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] hover:border-white/[0.14] hover:shadow-[0_26px_68px_rgba(0,0,0,0.32),0_8px_28px_rgba(255,255,255,0.035)] focus-visible:border-white/[0.14] focus-visible:outline-none',
   provider:
-    'group relative block aspect-[5/4] overflow-hidden rounded-[18px] border border-white/[0.08] bg-white/[0.035] p-5 shadow-[0_16px_45px_rgba(0,0,0,0.16)] transition-[transform,background-color,border-color,box-shadow] duration-[400ms] ease-out hover:-translate-y-1 hover:border-white/[0.16] hover:bg-white/[0.055] hover:shadow-[0_22px_60px_rgba(59,130,246,0.1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/[0.5]'
+    'group relative block aspect-[5/4] overflow-hidden rounded-[18px] border border-white/[0.08] bg-white/[0.035] p-5 shadow-[0_16px_45px_rgba(0,0,0,0.16)] transition-[transform,background-color,border-color,box-shadow] duration-[400ms] ease-out hover:-translate-y-1 hover:border-white/[0.16] hover:bg-white/[0.055] hover:shadow-[0_22px_60px_rgba(59,130,246,0.1)] focus-visible:outline-none'
 }
 
 export default function PublicCatalogCard ({

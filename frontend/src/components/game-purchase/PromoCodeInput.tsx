@@ -62,7 +62,7 @@ export default function PromoCodeInput ({
             type='button'
             onClick={onApply}
             disabled={disabled || !value.trim() || isApplying}
-            className='min-h-12 shrink-0 rounded-2xl border border-white bg-white px-5 text-sm font-semibold text-black transition-all duration-300 hover:border-fuchsia-300 hover:bg-fuchsia-300 hover:shadow-[0_12px_34px_rgba(217,70,239,0.18)] focus-visible:ring-2 focus-visible:ring-fuchsia-400/70 disabled:cursor-not-allowed disabled:border-white/[0.08] disabled:bg-white/[0.04] disabled:text-white/[0.34]'
+            className='min-h-12 shrink-0 rounded-2xl border border-white bg-white px-5 text-sm font-semibold text-black transition-all duration-300 hover:border-fuchsia-300 hover:bg-fuchsia-300 hover:shadow-[0_12px_34px_rgba(217,70,239,0.18)] disabled:cursor-not-allowed disabled:border-white/[0.08] disabled:bg-white/[0.04] disabled:text-white/[0.34]'
           >
             {isApplying ? 'Mengecek...' : appliedSuccess ? 'Terpasang' : 'Gunakan'}
           </button>
