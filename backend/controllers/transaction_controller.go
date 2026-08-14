@@ -1626,6 +1626,13 @@ func CheckTransactionStatus(c *fiber.Ctx) error {
 		"fulfillment_status": trx.FulfillmentStatus,
 		"provider_status":    customerSafeProviderStatus(trx),
 		"sn":                 snToReturn,
+		"qr_string":          trx.QRString,
+		"qr_url":             trx.QRURL,
+		"va_number":          trx.VANumber,
+		"va_bank":            trx.VABank,
+		"bill_key":           trx.BillKey,
+		"biller_code":        trx.BillerCode,
+		"deeplink_url":       trx.DeeplinkURL,
 		"expiry_time":        trx.ExpiryTime,
 	})
 }

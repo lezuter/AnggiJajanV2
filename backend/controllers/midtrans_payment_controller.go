@@ -379,7 +379,7 @@ func buildMidtransSnapPayload(
 				midtransDefaultCustomerPhone(),
 			),
 		},
-
+		
 		EnabledPayments: []string{selected.ProviderMethod},
 	}
 	if selected.ProviderMethod == "google_pay" ||
@@ -392,6 +392,71 @@ func buildMidtransSnapPayload(
 			Error:  config.ErrorRedirectURL,
 		}
 	}
+	return payload
+}
+
+func buildCoreAPIPayload(
+	invoiceID string,
+	product models.Product,
+	selected midtransPaymentMethodOption,
+	req models.CheckoutRequest,
+	expiryDuration time.Duration,
+) map[string]interface{} {
+	grossAmount := int64(math.Round(selected.TotalAmount))
+	method := strings.ToLower(strings.TrimSpace(selected.ProviderMethod))
+
+	payload := map[string]interface{}{
+		"transaction_details": map[string]interface{}{
+			"order_id":     invoiceID,
+			"gross_amount": grossAmount,
+		},
+		"customer_details": map[string]interface{}{
+			"first_name": firstNonEmpty(req.CustomerName, "Pelanggan Anggijajan"),
+			"email":      firstNonEmpty(req.Email, "customer@anggijajan.com"),
+			"phone":      firstNonEmpty(req.PayerPhone, midtransDefaultCustomerPhone()),
+		},
+		"custom_expiry": map[string]interface{}{
+			"expiry_duration": int(expiryDuration.Minutes()),
+			"unit":            "minute",
+		},
+	}
+
+	switch {
+	case method == "other_qris" || method == "qris":
+		payload["payment_type"] = "qris"
+		payload["qris"] = map[string]interface{}{"acquirer": "gopay"}
+	case method == "bca_va":
+		payload["payment_type"] = "bank_transfer"
+		payload["bank_transfer"] = map[string]interface{}{"bank": "bca"}
+	case method == "bni_va":
+		payload["payment_type"] = "bank_transfer"
+		payload["bank_transfer"] = map[string]interface{}{"bank": "bni"}
+	case method == "bri_va":
+		payload["payment_type"] = "bank_transfer"
+		payload["bank_transfer"] = map[string]interface{}{"bank": "bri"}
+	case method == "cimb_va":
+		payload["payment_type"] = "bank_transfer"
+		payload["bank_transfer"] = map[string]interface{}{"bank": "cimb"}
+	case method == "permata_va":
+		payload["payment_type"] = "permata"
+	case method == "echannel":
+		payload["payment_type"] = "echannel"
+		payload["echannel"] = map[string]interface{}{"bill_info1": "Topup Game:", "bill_info2": product.Name}
+	case method == "gopay":
+		payload["payment_type"] = "gopay"
+	case method == "shopeepay":
+		payload["payment_type"] = "shopeepay"
+	case method == "alfamart":
+		payload["payment_type"] = "cstore"
+		payload["cstore"] = map[string]interface{}{"store": "alfamart"}
+	case method == "indomaret":
+		payload["payment_type"] = "cstore"
+		payload["cstore"] = map[string]interface{}{"store": "indomaret"}
+	default:
+		payload["payment_type"] = "qris"
+		payload["qris"] = map[string]interface{}{"acquirer": "gopay"}
+	}
+
 	return payload
 }
 
@@ -556,11 +621,9 @@ func checkoutWithMidtrans(
 		})
 	}
 
-	payload := buildMidtransSnapPayload(invoiceID, product, selected, req)
-	requestContext, cancel := context.WithTimeout(c.UserContext(), 20*time.Second)
-	defer cancel()
-
-	snap, err := createMidtransSnap(requestContext, payload)
+	// Build Core API payload and call Midtrans Core `/v2/charge`
+	payload := buildCoreAPIPayload(invoiceID, product, selected, req, expiryDuration)
+	chargeResp, err := payments.ChargeMidtransCoreAPI(c.UserContext(), payload)
 	if err != nil {
 		_ = database.DB.Model(&trx).Updates(map[string]interface{}{
 			"status":          "FAILED",
@@ -569,20 +632,41 @@ func checkoutWithMidtrans(
 			"error_message":   err.Error(),
 		}).Error
 		return c.Status(fiber.StatusBadGateway).JSON(fiber.Map{
-			"error":      "Gagal membuat pembayaran Midtrans",
+			"error":      "Gagal membuat pembayaran Midtrans Core API",
 			"reason":     err.Error(),
 			"invoice_id": invoiceID,
 		})
 	}
 
-	trx.SnapToken = strings.TrimSpace(snap.Token)
-	trx.PaymentURL = strings.TrimSpace(snap.RedirectURL)
-	if err := database.DB.Model(&trx).Updates(map[string]interface{}{
-		"snap_token":      trx.SnapToken,
-		"payment_url":     trx.PaymentURL,
-		"error_message":   "",
-		"provider_status": "Waiting Payment",
-	}).Error; err != nil {
+	updates := map[string]interface{}{
+		"midtrans_transaction_id": strings.TrimSpace(chargeResp.TransactionID),
+		"payment_reference":       strings.TrimSpace(chargeResp.TransactionID),
+		"error_message":           "",
+		"provider_status":         "Waiting Payment",
+	}
+	if len(chargeResp.VANumbers) > 0 {
+		updates["va_number"] = strings.TrimSpace(chargeResp.VANumbers[0].VANumber)
+		updates["va_bank"] = strings.TrimSpace(chargeResp.VANumbers[0].Bank)
+	}
+	if chargeResp.BillKey != "" {
+		updates["bill_key"] = strings.TrimSpace(chargeResp.BillKey)
+		updates["biller_code"] = strings.TrimSpace(chargeResp.BillerCode)
+	}
+	if chargeResp.QRString != "" {
+		updates["qr_string"] = strings.TrimSpace(chargeResp.QRString)
+	}
+	if chargeResp.PaymentCode != "" {
+		updates["payment_code"] = strings.TrimSpace(chargeResp.PaymentCode)
+	}
+	for _, act := range chargeResp.Actions {
+		if act.Name == "generate-qr-code" {
+			updates["qr_url"] = strings.TrimSpace(act.URL)
+		} else if act.Name == "deeplink-redirect" {
+			updates["deeplink_url"] = strings.TrimSpace(act.URL)
+		}
+	}
+
+	if err := database.DB.Model(&trx).Updates(updates).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error":      "Pembayaran dibuat tetapi gagal menyimpan detailnya",
 			"invoice_id": invoiceID,
@@ -592,20 +676,16 @@ func checkoutWithMidtrans(
 	return c.JSON(fiber.Map{
 		"message": "Success",
 		"data": fiber.Map{
-			"snap_token":         trx.SnapToken,
-			"redirect_url":       trx.PaymentURL,
-			"amount":             selected.TotalAmount,
-			"base_price":         selected.BasePrice,
-			"customer_surcharge": selected.CustomerSurcharge,
-			"estimated_fee":      selected.EstimatedFee,
-			"payment_method":     selected.ProviderMethod,
-			"payment_name":       selected.Name,
-			"payment_provider":   "midtrans",
-			"quote_key":          selected.QuoteKey,
-			"invoice_id":         invoiceID,
-			"merchant_ref":       invoiceID,
-			"reference":          statusReference,
-			"expiry_time":        expiryTime.Format(time.RFC3339),
+			"invoice_id":   invoiceID,
+			"amount":       selected.TotalAmount,
+			"qr_string":    updates["qr_string"],
+			"qr_url":       updates["qr_url"],
+			"va_number":    updates["va_number"],
+			"va_bank":      updates["va_bank"],
+			"bill_key":     updates["bill_key"],
+			"biller_code":  updates["biller_code"],
+			"deeplink_url": updates["deeplink_url"],
+			"expiry_time":  expiryTime.Format(time.RFC3339),
 		},
 	})
 }
