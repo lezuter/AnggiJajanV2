@@ -215,13 +215,13 @@ export default function TransactionTable ({
                   <td className='px-5 py-4 align-middle'>
                     <div className='flex items-center gap-2'>
                       <span className='font-mono text-xs font-bold text-sky-400 transition-colors group-hover:text-sky-300'>
-                        {trx.customer_phone}
+                        {trx.target}
                       </span>
                       <button
                         onClick={e =>
                           handleSmartCopy(
                             e,
-                            trx.customer_phone,
+                            trx.target,
                             `tgt-${trx.ID}`
                           )
                         }

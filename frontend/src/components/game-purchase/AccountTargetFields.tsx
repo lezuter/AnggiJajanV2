@@ -3,7 +3,10 @@
 import type { Ref } from 'react'
 
 interface AccountTargetFieldsProps {
-  requiresZone: boolean
+  targetType?: string
+  targetLabel?: string
+  targetSecondaryLabel?: string
+  targetServerOptions?: string
   userId: string
   zoneId: string
   userIdRef: Ref<HTMLInputElement>
@@ -15,10 +18,13 @@ interface AccountTargetFieldsProps {
 }
 
 const inputClassName =
-  'mt-3 h-12 w-full rounded-2xl border border-white/[0.08] bg-white/[0.025] px-4 text-sm text-white outline-none transition-[border-color,background-color,box-shadow] duration-300 placeholder:text-white/[0.28] hover:border-white/[0.14] focus:!outline-none focus:border-fuchsia-400/55 focus:bg-fuchsia-400/[0.025] focus:shadow-[0_0_0_3px_rgba(232,121,249,0.10),0_0_24px_rgba(217,70,239,0.08)] focus-visible:!outline-none [&:user-invalid]:border-fuchsia-400/55 [&:user-invalid]:bg-fuchsia-400/[0.025] [&:user-invalid]:shadow-[0_0_0_3px_rgba(232,121,249,0.10),0_0_24px_rgba(217,70,239,0.08)]'
+  'mt-3 h-12 w-full rounded-2xl border border-white/[0.08] bg-white/[0.025] px-4 text-sm text-white outline-none focus:outline-none focus-visible:outline-none transition-[border-color,background-color] duration-300 placeholder:text-white/[0.28] hover:border-white/[0.14]'
 
 export default function AccountTargetFields ({
-  requiresZone,
+  targetType = 'SINGLE_ID',
+  targetLabel = 'User ID',
+  targetSecondaryLabel = 'Zone ID',
+  targetServerOptions = '',
   userId,
   zoneId,
   userIdRef,
@@ -28,17 +34,35 @@ export default function AccountTargetFields ({
   onUserIdChange,
   onZoneIdChange
 }: AccountTargetFieldsProps) {
+  const isDualInput = targetType === 'DUAL_INPUT'
+  const isServerDropdown = targetType === 'SERVER_DROPDOWN'
+  const isRiotID = targetType === 'RIOT_ID'
+  const isGeneric = targetType === 'GENERIC'
+
+  // Parsing opsi server jika berupa string koma (misal: "Asia, America, Europe")
+  const serverOptions = targetServerOptions
+    ? targetServerOptions.split(',').map(s => s.trim()).filter(Boolean)
+    : ['Asia', 'America', 'Europe', 'TW_HK_MO']
+
   const isUserIdMissing = showWarning && userId.trim().length === 0
-  const isZoneIdMissing =
-    showWarning && requiresZone && zoneId.trim().length === 0
+  const isZoneIdMissing = showWarning && (isDualInput || isServerDropdown) && zoneId.trim().length === 0
+
   const warningMessage =
     isUserIdMissing && isZoneIdMissing
-      ? 'Lengkapi User ID dan Zone ID untuk memilih nominal.'
+      ? `Lengkapi ${targetLabel} dan ${targetSecondaryLabel} untuk memilih nominal.`
       : isUserIdMissing
-      ? 'Lengkapi User ID untuk memilih nominal.'
+      ? `Lengkapi ${targetLabel} untuk memilih nominal.`
       : isZoneIdMissing
-      ? 'Lengkapi Zone ID untuk memilih nominal.'
+      ? `Lengkapi ${targetSecondaryLabel} untuk memilih nominal.`
       : ''
+
+  const placeholderText = isRiotID
+    ? 'Riot ID'
+    : isGeneric
+    ? targetLabel
+    : targetLabel.toLowerCase().includes('growid')
+    ? 'Masukkan GrowID'
+    : `Masukkan ${targetLabel}`
 
   return (
     <section
@@ -79,23 +103,19 @@ export default function AccountTargetFields ({
 
       <div
         className={`mt-7 grid gap-5 ${
-          requiresZone
+          isDualInput || isServerDropdown
             ? 'sm:grid-cols-[minmax(0,1.35fr)_minmax(180px,0.65fr)] sm:items-end'
             : 'max-w-2xl'
         }`}
       >
+        {/* Field 1: User ID / UID / GrowID / Riot ID */}
         <div className='min-w-0'>
           <label
             htmlFor='game-user-id'
             className='inline-flex items-center gap-1 text-xs font-medium text-white/[0.68]'
           >
-            User ID
-            <span
-              aria-hidden='true'
-              className='text-fuchsia-300/[0.8]'
-            >
-              *
-            </span>
+            {targetLabel}
+            <span aria-hidden='true' className='text-fuchsia-300/[0.8]'>*</span>
             <span className='sr-only'>Wajib</span>
           </label>
           <input
@@ -104,35 +124,27 @@ export default function AccountTargetFields ({
             name='game-user-id'
             type='text'
             autoComplete='off'
-            placeholder='Masukkan User ID'
+            placeholder={placeholderText}
             className={`${inputClassName} ${
               isUserIdMissing
-                ? 'border-fuchsia-400/55 bg-fuchsia-400/[0.025] shadow-[0_0_0_3px_rgba(232,121,249,0.10),0_0_24px_rgba(217,70,239,0.08)]'
+                ? 'border-fuchsia-400/55 bg-fuchsia-400/[0.025]'
                 : ''
             }`}
             value={userId}
-            aria-invalid={isUserIdMissing}
-            aria-describedby={
-              warningMessage ? 'account-target-warning' : undefined
-            }
             onChange={event => onUserIdChange(event.target.value)}
             required
           />
         </div>
 
-        {requiresZone && (
+        {/* Field 2A: Zone ID / Server ID (Dual Input) */}
+        {isDualInput && (
           <div className='min-w-0'>
             <label
               htmlFor='game-zone-id'
               className='inline-flex items-center gap-1 text-xs font-medium text-white/[0.68]'
             >
-              Zone ID
-              <span
-                aria-hidden='true'
-                className='text-fuchsia-300/[0.8]'
-              >
-                *
-              </span>
+              {targetSecondaryLabel}
+              <span aria-hidden='true' className='text-fuchsia-300/[0.8]'>*</span>
               <span className='sr-only'>Wajib</span>
             </label>
             <input
@@ -141,20 +153,44 @@ export default function AccountTargetFields ({
               name='game-zone-id'
               type='text'
               autoComplete='off'
-              placeholder='Masukkan Zone ID'
+              placeholder={`Masukkan ${targetSecondaryLabel}`}
               className={`${inputClassName} ${
                 isZoneIdMissing
-                  ? 'border-fuchsia-400/55 bg-fuchsia-400/[0.025] shadow-[0_0_0_3px_rgba(232,121,249,0.10),0_0_24px_rgba(217,70,239,0.08)]'
+                  ? 'border-fuchsia-400/55 bg-fuchsia-400/[0.025]'
                   : ''
               }`}
               value={zoneId}
-              aria-invalid={isZoneIdMissing}
-              aria-describedby={
-                warningMessage ? 'account-target-warning' : undefined
-              }
               onChange={event => onZoneIdChange(event.target.value)}
               required
             />
+          </div>
+        )}
+
+        {/* Field 2B: Server Selector Dropdown (Genshin, Honkai, dll.) */}
+        {isServerDropdown && (
+          <div className='min-w-0'>
+            <label
+              htmlFor='game-server-select'
+              className='inline-flex items-center gap-1 text-xs font-medium text-white/[0.68]'
+            >
+              {targetSecondaryLabel}
+              <span aria-hidden='true' className='text-fuchsia-300/[0.8]'>*</span>
+              <span className='sr-only'>Wajib</span>
+            </label>
+            <select
+              id='game-server-select'
+              value={zoneId}
+              onChange={e => onZoneIdChange(e.target.value)}
+              className={`${inputClassName} cursor-pointer [&>option]:bg-slate-900 [&>option]:text-white`}
+              required
+            >
+              <option value=''>{targetSecondaryLabel}</option>
+              {serverOptions.map(srv => (
+                <option key={srv} value={srv}>
+                  {srv}
+                </option>
+              ))}
+            </select>
           </div>
         )}
       </div>

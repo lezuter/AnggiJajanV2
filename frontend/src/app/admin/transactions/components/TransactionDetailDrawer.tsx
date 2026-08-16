@@ -194,13 +194,13 @@ export default function TransactionDetailDrawer ({
                   />
                   <FieldRow
                     label='Target ID / No HP'
-                    value={transaction.customer_phone}
+                    value={transaction.target}
                     accent='sky'
                     action={
                       <CopyButton
                         copied={copiedId === 'target'}
                         onClick={() =>
-                          handleSmartCopy(transaction.customer_phone, 'target')
+                          handleSmartCopy(transaction.target, 'target')
                         }
                       />
                     }

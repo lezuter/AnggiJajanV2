@@ -57,8 +57,12 @@ const (
 	paymentMaximumCustomerSurchargeSettingKey     = "payment_max_customer_surcharge_percent"
 )
 
-func midtransQuoteKey(providerMethod string) string {
-	return "v1:midtrans:" + strings.ToLower(strings.TrimSpace(providerMethod))
+func midtransQuoteKey(providerMethod string, quantity int) string {
+	return fmt.Sprintf(
+		"v2:midtrans:%s:q%d",
+		strings.ToLower(strings.TrimSpace(providerMethod)),
+		quantity,
+	)
 }
 
 func paymentSurchargeProfitRetentionPercent() float64 {
@@ -340,7 +344,14 @@ func applyMidtransPaymentLogoOverrides(config *payments.MidtransConfig) {
 func buildMidtransPaymentQuote(
 	product models.Product,
 	activation midtransPaymentActivation,
+	quantity int,
 ) (midtransPaymentQuote, error) {
+
+	// Normalisasi quantity
+	if quantity <= 0 {
+		quantity = 1
+	}
+
 	config, err := payments.LoadMidtransConfig()
 	if err != nil {
 		return midtransPaymentQuote{}, err
@@ -348,7 +359,8 @@ func buildMidtransPaymentQuote(
 
 	applyMidtransPaymentLogoOverrides(&config)
 
-	capital := math.Round(product.Price)
+	unitCapital := math.Round(product.Price)
+	capital := unitCapital * float64(quantity)
 	var groupMarkup *float64
 	if product.ProductGroup != nil {
 		groupMarkup = product.ProductGroup.MarkupPercent
@@ -447,7 +459,7 @@ func buildMidtransPaymentQuote(
 		}
 
 		options = append(options, midtransPaymentMethodOption{
-			QuoteKey:           midtransQuoteKey(providerMethod),
+			QuoteKey:           midtransQuoteKey(providerMethod, quantity),
 			Code:               method.Code,
 			Name:               method.Name,
 			Category:           method.Category,
@@ -503,9 +515,15 @@ func buildMidtransPaymentQuote(
 func buildCurrentMidtransPaymentQuote(
 	ctx context.Context,
 	product models.Product,
+	quantity int,
 ) (midtransPaymentQuote, error) {
 	activation := getMidtransPaymentActivation(ctx)
-	return buildMidtransPaymentQuote(product, activation)
+
+	return buildMidtransPaymentQuote(
+		product,
+		activation,
+		quantity,
+	)
 }
 
 func findMidtransPaymentQuote(
@@ -522,11 +540,22 @@ func findMidtransPaymentQuote(
 }
 
 func GetMidtransPaymentMethods(c *fiber.Ctx) error {
-	productID, err := strconv.ParseUint(strings.TrimSpace(c.Query("product_id")), 10, 64)
+	productID, err := strconv.ParseUint(
+		strings.TrimSpace(c.Query("product_id")),
+		10,
+		64,
+	)
 	if err != nil || productID == 0 {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "product_id tidak valid",
 		})
+	}
+
+	quantity, err := strconv.Atoi(
+		strings.TrimSpace(c.Query("quantity")),
+	)
+	if err != nil || quantity <= 0 {
+		quantity = 1
 	}
 
 	var product models.Product
@@ -545,10 +574,17 @@ func GetMidtransPaymentMethods(c *fiber.Ctx) error {
 		})
 	}
 
-	requestContext, cancel := context.WithTimeout(c.UserContext(), 10*time.Second)
+	requestContext, cancel := context.WithTimeout(
+		c.UserContext(),
+		10*time.Second,
+	)
 	defer cancel()
 
-	quote, err := buildCurrentMidtransPaymentQuote(requestContext, product)
+	quote, err := buildCurrentMidtransPaymentQuote(
+		requestContext,
+		product,
+		quantity,
+	)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error":  "Metode pembayaran belum bisa dimuat",

@@ -266,6 +266,7 @@ func fetchMidtransPaymentActivation(
 
 func getMidtransPaymentActivation(ctx context.Context) midtransPaymentActivation {
 	serverKey := midtransServerKey()
+
 	if serverKey == "" {
 		return midtransPaymentActivation{
 			Methods:        map[string]bool{},
@@ -275,26 +276,47 @@ func getMidtransPaymentActivation(ctx context.Context) midtransPaymentActivation
 
 	cacheKey := midtransPreferenceCacheKey(serverKey)
 	now := time.Now()
-	midtransPreferenceCacheMu.Lock()
-	defer midtransPreferenceCacheMu.Unlock()
 
-	if cached, found := midtransPreferenceCache[cacheKey]; found && now.Before(cached.ExpiresAt) {
-		return cloneMidtransActivation(cached.Activation)
+	// cek cache dulu
+	midtransPreferenceCacheMu.Lock()
+
+	cached, found := midtransPreferenceCache[cacheKey]
+
+	if found && now.Before(cached.ExpiresAt) {
+		activation := cloneMidtransActivation(cached.Activation)
+		midtransPreferenceCacheMu.Unlock()
+		return activation
 	}
 
-	activation, err := fetchMidtransPaymentActivation(ctx, serverKey)
+	midtransPreferenceCacheMu.Unlock()
+
+	// fetch tanpa lock
+	activation, err := fetchMidtransPaymentActivation(
+		ctx,
+		serverKey,
+	)
+
 	cacheTTL := midtransPreferenceCacheTTL
+
 	if err != nil {
 		activation = midtransPaymentActivation{
 			Methods:        map[string]bool{},
 			DisabledReason: midtransPreferenceUnavailableReason,
 		}
+
 		cacheTTL = midtransPreferenceFailureCacheTTL
 	}
+
+	// update cache
+	midtransPreferenceCacheMu.Lock()
+
 	midtransPreferenceCache[cacheKey] = midtransPreferenceCacheEntry{
 		Activation: cloneMidtransActivation(activation),
 		ExpiresAt:  now.Add(cacheTTL),
 	}
+
+	midtransPreferenceCacheMu.Unlock()
+
 	return cloneMidtransActivation(activation)
 }
 
@@ -341,7 +363,18 @@ func buildMidtransSnapPayload(
 	selected midtransPaymentMethodOption,
 	req models.CheckoutRequest,
 ) midtransSnapRequest {
-	grossAmount := int64(math.Round(selected.TotalAmount))
+	quantity := req.Quantity
+
+	if quantity <= 0 {
+		quantity = 1
+	}
+
+	grossAmount := int64(
+		math.Round(
+			(selected.BasePrice * float64(quantity)) +
+				selected.CustomerSurcharge,
+		),
+	)
 	productName := strings.TrimSpace(product.Name)
 	if productName == "" {
 		productName = "Produk Anggijajan"
@@ -359,8 +392,8 @@ func buildMidtransSnapPayload(
 		ItemDetails: []midtransSnapItem{
 			{
 				ID:           productCode,
-				Price:        grossAmount,
-				Quantity:     1,
+				Price:        int64(math.Round(selected.BasePrice)),
+				Quantity:     quantity,
 				Name:         productName,
 				Brand:        "Anggijajan",
 				Category:     "Digital Product",
@@ -402,19 +435,69 @@ func buildCoreAPIPayload(
 	req models.CheckoutRequest,
 	expiryDuration time.Duration,
 ) map[string]interface{} {
+	quantity := req.Quantity
+
+	if quantity <= 0 {
+		quantity = 1
+	}
+
 	grossAmount := int64(math.Round(selected.TotalAmount))
+
 	method := strings.ToLower(strings.TrimSpace(selected.ProviderMethod))
+
+	productName := strings.TrimSpace(product.Name)
+	if productName == "" {
+		productName = "Produk Anggijajan"
+	}
+
+	productCode := strings.TrimSpace(product.Code)
+	if productCode == "" {
+		productCode = fmt.Sprintf("PRODUCT-%d", product.ID)
+	}
+
+	// Harga customer-facing harus sama dengan gross_amount.
+	itemDetails := []map[string]interface{}{
+		{
+			"id":            productCode,
+			"price":         grossAmount,
+			"quantity":      1,
+			"name":          productName,
+			"brand":         "Anggijajan",
+			"category":      "Digital Product",
+			"merchant_name": "Anggijajan",
+		},
+	}
+
+	// Ambil FinishRedirectURL dari config atau fallback ke localhost
+	config, _ := payments.ResolveMidtransRuntimeConfig()
+	finishURL := config.FinishRedirectURL
+	if finishURL == "" {
+		finishURL = "http://localhost:3000/cek-pesanan/"
+	}
 
 	payload := map[string]interface{}{
 		"transaction_details": map[string]interface{}{
 			"order_id":     invoiceID,
 			"gross_amount": grossAmount,
 		},
+
+		"item_details": itemDetails,
+
 		"customer_details": map[string]interface{}{
-			"first_name": firstNonEmpty(req.CustomerName, "Pelanggan Anggijajan"),
-			"email":      firstNonEmpty(req.Email, "customer@anggijajan.com"),
-			"phone":      firstNonEmpty(req.PayerPhone, midtransDefaultCustomerPhone()),
+			"first_name": firstNonEmpty(
+				req.CustomerName,
+				"Pelanggan Anggijajan",
+			),
+			"email": firstNonEmpty(
+				req.Email,
+				"customer@anggijajan.com",
+			),
+			"phone": firstNonEmpty(
+				req.PayerPhone,
+				midtransDefaultCustomerPhone(),
+			),
 		},
+
 		"custom_expiry": map[string]interface{}{
 			"expiry_duration": int(expiryDuration.Minutes()),
 			"unit":            "minute",
@@ -444,14 +527,27 @@ func buildCoreAPIPayload(
 		payload["echannel"] = map[string]interface{}{"bill_info1": "Topup Game:", "bill_info2": product.Name}
 	case method == "gopay":
 		payload["payment_type"] = "gopay"
+		payload["gopay"] = map[string]interface{}{
+			"enable_callback": true,
+			"callback_url":    finishURL, // Wajib untuk GoPay
+		}
 	case method == "shopeepay":
 		payload["payment_type"] = "shopeepay"
+		payload["shopeepay"] = map[string]interface{}{
+			"callback_url": finishURL, // Wajib untuk ShopeePay
+		}
 	case method == "alfamart":
 		payload["payment_type"] = "cstore"
-		payload["cstore"] = map[string]interface{}{"store": "alfamart"}
+		payload["cstore"] = map[string]interface{}{
+			"store":   "alfamart",
+			"message": "Anggijajan Order",
+		}
 	case method == "indomaret":
 		payload["payment_type"] = "cstore"
-		payload["cstore"] = map[string]interface{}{"store": "indomaret"}
+		payload["cstore"] = map[string]interface{}{
+			"store":   "indomaret",
+			"message": "Anggijajan Order",
+		}
 	default:
 		payload["payment_type"] = "qris"
 		payload["qris"] = map[string]interface{}{"acquirer": "gopay"}
@@ -518,8 +614,15 @@ func checkoutWithMidtrans(
 	req models.CheckoutRequest,
 	product models.Product,
 ) error {
+	// [FIX 1] Normalisasi quantity ditaruh paling atas agar bisa dipakai oleh quote builder
+	quantity := req.Quantity
+	if quantity <= 0 {
+		quantity = 1
+	}
+
 	preferenceContext, cancelPreference := context.WithTimeout(c.UserContext(), 10*time.Second)
-	quote, err := buildCurrentMidtransPaymentQuote(preferenceContext, product)
+	// [FIX 2] Kirim quantity ke buildCurrentMidtransPaymentQuote
+	quote, err := buildCurrentMidtransPaymentQuote(preferenceContext, product, quantity)
 	cancelPreference()
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
@@ -527,6 +630,7 @@ func checkoutWithMidtrans(
 			"reason": err.Error(),
 		})
 	}
+
 	selected, found := findMidtransPaymentQuote(quote, req.QuoteKey)
 	if !found || !selected.Enabled {
 		reason := selected.DisabledReason
@@ -538,10 +642,8 @@ func checkoutWithMidtrans(
 			"reason": reason,
 		})
 	}
-	if !midtransExpectedTotalMatches(
-		req.ExpectedTotalAmount,
-		selected.TotalAmount,
-	) {
+
+	if !midtransExpectedTotalMatches(req.ExpectedTotalAmount, selected.TotalAmount) {
 		return c.Status(fiber.StatusConflict).JSON(fiber.Map{
 			"error":      "Quote pembayaran berubah",
 			"error_code": "QUOTE_CHANGED",
@@ -561,6 +663,7 @@ func checkoutWithMidtrans(
 			"error": "Gagal membuat invoice pembayaran",
 		})
 	}
+
 	statusReference, err := generateSecureReference(16)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
@@ -568,17 +671,19 @@ func checkoutWithMidtrans(
 		})
 	}
 
-	capital := math.Round(product.Price)
+	// Hitung modal berdasarkan jumlah produk
+	capital := math.Round(product.Price * float64(quantity))
 	provider := strings.ToLower(strings.TrimSpace(product.Provider))
 	if provider == "" {
 		provider = "digiflazz"
 	}
+
 	paymentFeeBearer := "MERCHANT"
 	if selected.CustomerSurcharge > 0 {
 		paymentFeeBearer = "SHARED"
 	}
 
-	// --- TAMBAHAN LOGIKA EXPIRY TIME ---
+	// --- LOGIKA EXPIRY TIME ---
 	expiryDuration := 15 * time.Minute // Waktu default (QRIS / E-Wallet)
 	method := strings.ToLower(selected.ProviderMethod)
 	if strings.Contains(method, "_va") || method == "echannel" || method == "alfamart" || method == "indomaret" || method == "credit_card" || method == "google_pay" {
@@ -587,13 +692,34 @@ func checkoutWithMidtrans(
 	expiryTime := time.Now().Add(expiryDuration)
 	// -----------------------------------
 
+	// Canonical target fields for the transaction record.
+		// Gunakan Catalog.TargetType sebagai source of truth, bukan req.TargetType.
+		// Ambil dari Locals yang di-set oleh Checkout handler (sudah tervalidasi).
+		catalogTargetType, _ := c.Locals("checkout_normalized_target_type").(string)
+		targetPrimary, _ := c.Locals("checkout_normalized_target_primary").(string)
+		targetSecondary, _ := c.Locals("checkout_normalized_target_secondary").(string)
+
+		if catalogTargetType == "" {
+			// Fallback jika context tidak tersedia (rekursif/indirect call) —
+			// gunakan nilai dari Catalog dengan validasi yang sama.
+			catalogTargetType = normalizeTargetType(product.Catalog.TargetType)
+			if catalogTargetType == "" {
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+					"error": "Konfigurasi target tidak valid di catalog",
+				})
+			}
+			targetPrimary, targetSecondary = parseCheckoutTarget(req)
+		}
+
 	trx := models.Transaction{
-		InvoiceID:           invoiceID,
-		ProductID:           product.ID,
-		CustomerPhone:       strings.TrimSpace(req.CustomerPhone),
-		Amount:              selected.TotalAmount,
-		Capital:             capital,
-		Profit:              selected.TotalAmount - capital,
+		InvoiceID:       invoiceID,
+		ProductID:       product.ID,
+		Quantity:        quantity,
+		Target:          targetPrimary,
+		TargetSecondary: targetSecondary,
+		TargetType:      catalogTargetType,
+		// [FIX 3] Profit hitung dari ProductAmount, BUKAN TotalAmount (biar fee nggak dianggap margin)
+		Profit:              selected.ProductAmount - capital,
 		ProductAmount:       selected.ProductAmount,
 		StartingPrice:       selected.BasePrice,
 		CustomerSurcharge:   selected.CustomerSurcharge,
@@ -621,7 +747,7 @@ func checkoutWithMidtrans(
 		})
 	}
 
-	// Build Core API payload and call Midtrans Core `/v2/charge`
+	// Build Core API payload
 	payload := buildCoreAPIPayload(invoiceID, product, selected, req, expiryDuration)
 	chargeResp, err := payments.ChargeMidtransCoreAPI(c.UserContext(), payload)
 	if err != nil {
@@ -644,6 +770,7 @@ func checkoutWithMidtrans(
 		"error_message":           "",
 		"provider_status":         "Waiting Payment",
 	}
+
 	if len(chargeResp.VANumbers) > 0 {
 		updates["va_number"] = strings.TrimSpace(chargeResp.VANumbers[0].VANumber)
 		updates["va_bank"] = strings.TrimSpace(chargeResp.VANumbers[0].Bank)
@@ -867,7 +994,15 @@ func MidtransCallbackHandler(c *fiber.Ctx) error {
 			"reason":  "invalid callback body",
 		})
 	}
-	// If Midtrans callback does not include order_id, ignore it gracefully.
+
+	// === TAMBAHKAN DEBUG INI ===
+	if isAppDebug() {
+		fmt.Println("=== CALLBACK DEBUG ===")
+		fmt.Printf("%+v\n", notification)
+		fmt.Println("======================")
+	}
+	// ===========================
+
 	if strings.TrimSpace(notification.OrderID) == "" {
 		return c.JSON(fiber.Map{"success": true})
 	}
@@ -931,7 +1066,6 @@ func fetchMidtransStatus(
 		"Authorization",
 		midtransAuthorization(serverKey),
 	)
-	request.Header.Set("transaction-source", "SNAP_API")
 
 	client := &http.Client{
 		Timeout: 8 * time.Second,
@@ -985,10 +1119,9 @@ func reconcileMidtransTransaction(
 		return nil
 	}
 
-	reference := strings.TrimSpace(trx.InvoiceID)
-
+	reference := strings.TrimSpace(trx.MidtransTransactionID)
 	if reference == "" {
-		return fmt.Errorf("invoice Midtrans kosong")
+		reference = strings.TrimSpace(trx.InvoiceID)
 	}
 
 	ctx, cancel := context.WithTimeout(
@@ -1001,6 +1134,17 @@ func reconcileMidtransTransaction(
 		ctx,
 		reference,
 	)
+
+	if isAppDebug() {
+		fmt.Println("=== MIDTRANS STATUS DEBUG ===")
+		fmt.Println("Invoice:", trx.InvoiceID)
+		fmt.Println("Reference:", reference)
+		fmt.Println("Midtrans OrderID:", notification.OrderID)
+		fmt.Println("TransactionID:", notification.TransactionID)
+		fmt.Println("Status:", notification.TransactionStatus)
+		fmt.Println("============================")
+	}
+
 	if err != nil {
 		return err
 	}
@@ -1017,10 +1161,15 @@ func reconcileMidtransTransaction(
 		)
 	}
 
+	if strings.TrimSpace(notification.OrderID) == "" {
+		notification.OrderID = trx.InvoiceID
+	}
+
 	_, err = applyMidtransNotification(
 		c,
 		notification,
 	)
+
 	if err != nil {
 		return err
 	}

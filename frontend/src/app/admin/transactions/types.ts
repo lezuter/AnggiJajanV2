@@ -14,7 +14,18 @@ export interface TransactionActivity {
 export interface Transaction {
   ID: number;
   invoice_id: string;
-  customer_phone: string;
+  /**
+   * Canonical game/account target from backend Transaction.target.
+   * This interface no longer carries customer_phone as a game/account target.
+   */
+  target: string;
+  /**
+   * Opsional identifier sekunder (contoh: Zone ID, Server) sesuai konfigurasi
+   * Catalog.TargetSecondaryLabel. Bukan bagian dari target utama.
+   */
+  target_secondary?: string;
+  /** Tipe target yang didefinisikan di catalog: SINGLE_ID | DUAL_INPUT | SERVER_DROPDOWN | RIOT_ID | GENERIC. */
+  target_type?: string;
   amount: number;
   capital: number;
   profit: number;
@@ -38,7 +49,7 @@ export interface Transaction {
   created_via: string;
   created_by_name: string;
   created_by_role: string;
-  activities?: TransactionActivity[]; 
+  activities?: TransactionActivity[];
 
   Product?: {
     ID: number;

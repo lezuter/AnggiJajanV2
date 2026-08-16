@@ -73,7 +73,7 @@ interface ManualOrderTransaction {
   CreatedAt?: string
   UpdatedAt?: string
   invoice_id: string
-  customer_phone?: string
+  target?: string
   amount?: number
   capital?: number
   profit?: number
@@ -819,7 +819,7 @@ export default function ManualOrderPage () {
               updatedOrder.invoice_id ||
               `INV-${Date.now().toString().slice(-6)}`,
             item: orderProduct?.name || 'Produk Manual',
-            target: updatedOrder.customer_phone || '-',
+            target: updatedOrder.target || '-',
             status: isFailedResult ? 'FAILED' : 'SUCCESS',
             desc:
               updatedOrder.serial_number ||
@@ -1051,8 +1051,8 @@ export default function ManualOrderPage () {
           (isManualOrderSource ? selectedProduct?.name : undefined) ||
           'Unknown Item',
         target:
-          updatedOrder.customer_phone ||
-          activeOrder.customer_phone ||
+          updatedOrder.target ||
+          activeOrder.target ||
           getFinalTargetID(),
         status: isFailed ? 'FAILED' : 'SUCCESS',
         desc:
@@ -1148,7 +1148,7 @@ export default function ManualOrderPage () {
         (isManualOrderSource ? selectedProduct?.name : undefined) ||
         'Produk Manual',
       target:
-        order.customer_phone ||
+        order.target ||
         (isManualOrderSource ? getFinalTargetID() : '-') ||
         '-'
     }
@@ -2011,7 +2011,7 @@ export default function ManualOrderPage () {
                                 </div>
                                 <div className='mt-2 font-mono text-[10px] uppercase tracking-widest text-slate-500'>
                                   {formatIDR(order.amount || 0)} ·{' '}
-                                  {order.customer_phone || '-'}
+                                  {order.target || '-'}
                                 </div>
                               </div>
 
@@ -2155,7 +2155,7 @@ export default function ManualOrderPage () {
                             </div>
 
                             <div className='mt-2 grid grid-cols-1 gap-1 font-mono text-[10px] uppercase tracking-widest text-slate-500 sm:grid-cols-2'>
-                              <div>Target: {order.customer_phone || '-'}</div>
+                              <div>Target: {order.target || '-'}</div>
                               <div>Total: {formatIDR(order.amount || 0)}</div>
                               <div>
                                 Created: {formatDateTime(order.CreatedAt)}

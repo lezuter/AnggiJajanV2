@@ -129,6 +129,92 @@ func customerSafeProviderStatus(trx models.Transaction) string {
 	}
 }
 
+func buildProviderTarget(trx *models.Transaction) string {
+	target := strings.TrimSpace(trx.Target)
+	if target == "" {
+		return ""
+	}
+	secondary := strings.TrimSpace(trx.TargetSecondary)
+	if secondary == "" {
+		return target
+	}
+	return target + secondary
+}
+
+// parseCheckoutTarget memisahkan target utama dari input checkout.
+// Frontend kadang mengirim target gabungan "userId (zoneId)" padahal seharusnya
+// target utama dan secondary terpisah. Helper ini mendeteksi pola "(secondary)"
+// di akhir target dan memisahkannya bila ditemukan, tetapi tetap memprioritaskan
+// req.TargetSecondary bila dikirim secara eksplisit.
+func parseCheckoutTarget(req models.CheckoutRequest) (primaryTarget string, secondaryTarget string) {
+	primaryTarget = strings.TrimSpace(req.Target)
+	secondaryTarget = strings.TrimSpace(req.TargetSecondary)
+
+	// Jika frontend mengirim target gabungan "userId (zoneId)", deteksi dan pisah.
+	// Hanya lakukan parsing jika targetSecondary belum dikirim eksplisit.
+	if secondaryTarget == "" && strings.Contains(primaryTarget, "(") && strings.HasSuffix(primaryTarget, ")") {
+		idx := strings.LastIndex(primaryTarget, "(")
+		if idx > 0 {
+			potentialPrimary := strings.TrimSpace(primaryTarget[:idx])
+			potentialSecondary := strings.TrimSpace(primaryTarget[idx+1 : len(primaryTarget)-1])
+			if potentialPrimary != "" {
+				primaryTarget = potentialPrimary
+				secondaryTarget = potentialSecondary
+			}
+		}
+	}
+
+	return primaryTarget, secondaryTarget
+}
+
+// isValidTargetType memeriksa apakah tipe target adalah salah satu dari 5 nilai resmi.
+func isValidTargetType(tt string) bool {
+	switch tt {
+	case "SINGLE_ID", "DUAL_INPUT", "SERVER_DROPDOWN", "RIOT_ID", "GENERIC":
+		return true
+	}
+	return false
+}
+
+// normalizeTargetType mengembalikan TargetType yang dinormalisasi.
+// Jika kosong, default "SINGLE_ID". Jika bukan 5 nilai sah, kembalikan string kosong
+// agar pemanggil bisa menolak dengan 400.
+func normalizeTargetType(tt string) string {
+	tt = strings.TrimSpace(tt)
+	if tt == "" {
+		return "SINGLE_ID"
+	}
+	if isValidTargetType(tt) {
+		return tt
+	}
+	return ""
+}
+
+// parseCheckoutTargetManual memisahkan target utama dari input manual order.
+// ManualOrderRequest memiliki field Target dan TargetID sebagai alternatif.
+func parseCheckoutTargetManual(req models.ManualOrderRequest) (primaryTarget string, secondaryTarget string) {
+	primaryTarget = strings.TrimSpace(req.Target)
+	if primaryTarget == "" {
+		primaryTarget = strings.TrimSpace(req.TargetID)
+	}
+	secondaryTarget = strings.TrimSpace(req.TargetSecondary)
+
+	// Jika frontend mengirim target gabungan "userId (zoneId)", deteksi dan pisah.
+	if secondaryTarget == "" && strings.Contains(primaryTarget, "(") && strings.HasSuffix(primaryTarget, ")") {
+		idx := strings.LastIndex(primaryTarget, "(")
+		if idx > 0 {
+			potentialPrimary := strings.TrimSpace(primaryTarget[:idx])
+			potentialSecondary := strings.TrimSpace(primaryTarget[idx+1 : len(primaryTarget)-1])
+			if potentialPrimary != "" {
+				primaryTarget = potentialPrimary
+				secondaryTarget = potentialSecondary
+			}
+		}
+	}
+
+	return primaryTarget, secondaryTarget
+}
+
 func customerSafeTransactionDTO(trx models.Transaction, includeSensitiveResult bool) fiber.Map {
 	productName := strings.TrimSpace(trx.Product.Name)
 	if productName == "" {
@@ -154,8 +240,7 @@ func customerSafeTransactionDTO(trx models.Transaction, includeSensitiveResult b
 		"product":            fiber.Map{"name": productName},
 		"Product":            fiber.Map{"name": productName},
 		"product_name":       productName,
-		"target":             trx.CustomerPhone,
-		"customer_phone":     trx.CustomerPhone,
+		"target":             buildProviderTarget(&trx),
 		"amount":             trx.Amount,
 		"status":             trx.Status,
 		"payment_status":     trx.PaymentStatus,
@@ -360,7 +445,7 @@ func executeProviderForTransaction(c *fiber.Ctx, trx *models.Transaction, userID
 
 	recordTransactionActivity(requestActivity, "provider requested")
 
-	statusProvider, providerLog, err := ProcessTopupWithRef(trx.ProviderRef, trx.Product, trx.CustomerPhone)
+	statusProvider, providerLog, err := ProcessTopupWithRef(trx.ProviderRef, trx.Product, buildProviderTarget(trx))
 	message, resultOldStatus, err := saveProviderResultUnlessFinal(trx, statusProvider, providerLog, trx.ProviderRef, err)
 	if err != nil {
 		return "", err
@@ -424,19 +509,7 @@ func GetTransactions(c *fiber.Ctx) error {
 		if strings.TrimSpace(search) != "" {
 			keyword := "%" + strings.TrimSpace(search) + "%"
 			query = query.Where(
-				`transactions.invoice_id ILIKE ? OR
-					transactions.customer_phone ILIKE ? OR
-					transactions.reference ILIKE ? OR
-					transactions.provider ILIKE ? OR
-					transactions.provider_sku ILIKE ? OR
-					transactions.provider_ref ILIKE ? OR
-					transactions.provider_name ILIKE ? OR
-					transactions.error_message ILIKE ? OR
-					transactions.serial_number ILIKE ? OR
-					products.name ILIKE ? OR
-					products.code ILIKE ? OR
-					users.name ILIKE ?`,
-				keyword,
+				"transactions.invoice_id ILIKE ? OR transactions.target ILIKE ? OR transactions.target_secondary ILIKE ? OR transactions.reference ILIKE ? OR transactions.provider ILIKE ? OR transactions.provider_sku ILIKE ? OR transactions.provider_ref ILIKE ? OR transactions.provider_name ILIKE ? OR transactions.error_message ILIKE ? OR transactions.serial_number ILIKE ? OR products.name ILIKE ? OR products.code ILIKE ? OR users.name ILIKE ?",
 				keyword,
 				keyword,
 				keyword,
@@ -554,11 +627,11 @@ func GetTransactions(c *fiber.Ctx) error {
 		}
 
 		dto := models.TransactionListDTO{
-			ID:            trx.ID,
-			CreatedAt:     trx.CreatedAt,
-			UpdatedAt:     trx.UpdatedAt,
-			InvoiceID:     trx.InvoiceID,
-			CustomerPhone: trx.CustomerPhone,
+			ID:        trx.ID,
+			CreatedAt: trx.CreatedAt,
+			UpdatedAt: trx.UpdatedAt,
+			InvoiceID: trx.InvoiceID,
+			Target:    trx.Target,
 			Product: models.MinimalProductDTO{
 				ID:   trx.Product.ID,
 				Name: trx.Product.Name,
@@ -768,10 +841,20 @@ func ManualOrder(c *fiber.Ctx) error {
 		})
 	}
 
+	// Canonical target fields for the transaction record.
+	// Gunakan Catalog.TargetType sebagai source of truth, bukan req.TargetType.
+	catalogTargetType := strings.TrimSpace(p.Catalog.TargetType)
+	if catalogTargetType == "" {
+		catalogTargetType = "SINGLE_ID"
+	}
+	targetPrimary, targetSecondary := parseCheckoutTargetManual(req)
+
 	trx := models.Transaction{
 		InvoiceID:          invoiceID,
 		ProductID:          p.ID,
-		CustomerPhone:      req.TargetID,
+		Target:             targetPrimary,
+		TargetSecondary:    targetSecondary,
+		TargetType:         catalogTargetType,
 		Amount:             sellingPrice,
 		Capital:            capital,
 		Profit:             profit,
@@ -782,7 +865,7 @@ func ManualOrder(c *fiber.Ctx) error {
 		ProductAmount:      sellingPrice,
 		StartingPrice:      sellingPrice,
 		PaymentProvider:    "midtrans",
-		PaymentQuoteKey:    midtransQuoteKey("qris"),
+		PaymentQuoteKey:    midtransQuoteKey("qris", 1),
 		PaymentMethod:      "qris",
 		PaymentFeeBearer:   "MERCHANT",
 		NetProfitEstimated: profit,
@@ -810,8 +893,7 @@ func ManualOrder(c *fiber.Ctx) error {
 		BasePrice:      sellingPrice,
 	}
 	payload := buildMidtransSnapPayload(invoiceID, p, manualPayment, models.CheckoutRequest{
-		CustomerPhone: req.TargetID,
-		CustomerName:  "Admin Anggijajan",
+		CustomerName: "Admin Anggijajan",
 	})
 	requestContext, cancel := context.WithTimeout(c.UserContext(), 20*time.Second)
 	defer cancel()
@@ -973,7 +1055,7 @@ func CheckManualOrderProviderStatus(c *fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"error": "Provider SKU kosong, status Digiflazz tidak bisa dicek ulang"})
 	}
 
-	resp, err := topupDigiflazz(trx.ProviderRef, trx.ProviderSKU, trx.CustomerPhone)
+	resp, err := topupDigiflazz(trx.ProviderRef, trx.ProviderSKU, buildProviderTarget(&trx))
 	if err != nil {
 		activity := models.TransactionActivity{
 			TransactionID: trx.ID,
@@ -1073,11 +1155,6 @@ func Checkout(c *fiber.Ctx) error {
 			"error": "Produk wajib dipilih",
 		})
 	}
-	if strings.TrimSpace(req.CustomerPhone) == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "ID atau nomor tujuan wajib diisi",
-		})
-	}
 	if strings.TrimSpace(req.QuoteKey) == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "Quote metode pembayaran wajib dipilih",
@@ -1093,6 +1170,42 @@ func Checkout(c *fiber.Ctx) error {
 			"error": "Produk tidak ditemukan",
 		})
 	}
+
+	// === NORMALISASI TARGETTYPE DARI CATALOG ===
+		// Catalog.TargetType adalah source of truth. req.TargetType tidak dipercaya.
+		catalogTargetType := normalizeTargetType(product.Catalog.TargetType)
+		if catalogTargetType == "" {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"error": "Konfigurasi target tidak valid di catalog: " + product.Catalog.TargetType,
+			})
+		}
+
+		// === VALIDASI TARGET ===
+		// Target wajib diisi untuk semua tipe target.
+		targetPrimary, targetSecondary := parseCheckoutTarget(req)
+		if strings.TrimSpace(targetPrimary) == "" {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"error": "ID atau nomor tujuan wajib diisi",
+			})
+		}
+
+		// === VALIDASI TARGETSECONDARY ===
+		// Wajib untuk DUAL_INPUT, SERVER_DROPDOWN, RIOT_ID.
+		// Boleh kosong untuk SINGLE_ID.
+		switch catalogTargetType {
+		case "DUAL_INPUT", "SERVER_DROPDOWN", "RIOT_ID":
+			if strings.TrimSpace(targetSecondary) == "" {
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+					"error": "Zone/Server wajib diisi untuk tipe target ini",
+				})
+			}
+		}
+
+		// Simpan ke context untuk digunakan di checkoutWithMidtrans.
+		// Ini menjamin Transaction menggunakan Catalog.TargetType sebagai source of truth.
+		c.Locals("checkout_normalized_target_type", catalogTargetType)
+		c.Locals("checkout_normalized_target_primary", targetPrimary)
+		c.Locals("checkout_normalized_target_secondary", targetSecondary)
 
 	if availabilityError := storefrontProductAvailabilityError(product); availabilityError != "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
@@ -1688,7 +1801,7 @@ func RetryTransaction(c *fiber.Ctx) error {
 		return c.Status(500).JSON(fiber.Map{"error": "Gagal menyiapkan retry provider"})
 	}
 
-	statusProvider, providerLog, providerErr := ProcessTopupWithRef(newProviderRef, trx.Product, trx.CustomerPhone)
+	statusProvider, providerLog, providerErr := ProcessTopupWithRef(newProviderRef, trx.Product, buildProviderTarget(&trx))
 	message, _, err := saveProviderResultUnlessFinal(&trx, statusProvider, providerLog, newProviderRef, providerErr)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": "Gagal menyimpan hasil retry"})

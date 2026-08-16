@@ -220,7 +220,7 @@ function downloadCsv (transactions: Transaction[]) {
     formatCsvDate(trx.CreatedAt),
     trx.Product?.name || '',
     trx.Product?.code || '',
-    trx.customer_phone,
+    trx.target,
     trx.amount,
     trx.capital,
     trx.profit,

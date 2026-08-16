@@ -30,7 +30,7 @@ func TestGooglePayRequiresActiveCardChannel(t *testing.T) {
 	activation := configureMidtransQuoteTest(t, "google_pay")
 	quote, err := buildMidtransPaymentQuote(
 		models.Product{Price: 100_000},
-		activation,
+		activation, 1,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -46,7 +46,7 @@ func TestGooglePayRequiresActiveCardChannel(t *testing.T) {
 	activation.Methods["credit_card"] = true
 	quote, err = buildMidtransPaymentQuote(
 		models.Product{Price: 100_000},
-		activation,
+		activation, 1,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -108,6 +108,7 @@ func TestMidtransQuoteDeclaresDynamicFeeBearer(t *testing.T) {
 			t,
 			"other_qris,dana,credit_card",
 		),
+		1,
 	)
 	if err != nil {
 		t.Fatal(err)

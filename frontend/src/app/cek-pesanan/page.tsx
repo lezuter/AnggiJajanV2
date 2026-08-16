@@ -13,7 +13,6 @@ interface SearchOrderResult {
   Product?: { name?: string };
   product_name?: string;
   target?: string;
-  customer_phone?: string;
   amount?: number;
   status?: string;
   payment_status?: string;
@@ -119,7 +118,7 @@ export default function CekPesananPage() {
     result?.Product?.name ||
     result?.product_name ||
     "Nama Item";
-  const target = result?.target || result?.customer_phone || "-";
+  const target = result?.target || "-";
   const serialNumber = result?.sn || result?.serial_number || "";
 
   const handleSearch = async (e: FormEvent) => {

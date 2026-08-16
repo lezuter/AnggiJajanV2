@@ -42,6 +42,10 @@ interface CatalogMetadata {
   description?: string
   accent?: string
   shortName?: string
+  target_type?: string
+  target_label?: string
+  target_secondary_label?: string
+  target_server_options?: string
 }
 
 interface ProductGroup {
@@ -470,18 +474,23 @@ export default function GameDetailClient ({ slug }: { slug: string }) {
     return () => controller.abort()
   }, [selectedProduct, quantity, paymentMethodsRefreshKey])
 
-  const selectedTarget = zoneId ? `${userId} (${zoneId})` : userId
   const shortName =
     game?.short_name?.trim() ||
     game?.shortName?.trim() ||
     publicCatalog?.shortName ||
     game?.name[0] ||
     'AJ'
-  const requiresZone = Boolean(
-    game?.slug.toLowerCase().includes('mobile-legends')
-  )
+
+  const catalogTargetType =
+    (game?.target_type || 'SINGLE_ID').toUpperCase()
+  const isSingleId = catalogTargetType === 'SINGLE_ID'
+  const isRiotId = catalogTargetType === 'RIOT_ID'
+  const requiresSecondary =
+    catalogTargetType === 'DUAL_INPUT' ||
+    catalogTargetType === 'SERVER_DROPDOWN'
+
   const hasAccountData =
-    userId.trim().length > 0 && (!requiresZone || zoneId.trim().length > 0)
+    userId.trim().length > 0 && (!requiresSecondary || zoneId.trim().length > 0)
   const currentStep = !hasAccountData ? 1 : selectedProduct ? 3 : 2
 
   useEffect(() => {
@@ -529,7 +538,7 @@ export default function GameDetailClient ({ slug }: { slug: string }) {
     PURCHASES_ENABLED &&
     Boolean(selectedProduct) &&
     Boolean(userId) &&
-    (!requiresZone || Boolean(zoneId)) &&
+    (isSingleId || isRiotId || Boolean(zoneId)) &&
     Boolean(selectedQuoteKey) &&
     Boolean(selectedPaymentMethod?.enabled) &&
     !paymentMethodsLoading &&
@@ -539,8 +548,8 @@ export default function GameDetailClient ({ slug }: { slug: string }) {
     ? 'Katalog masih dapat dilihat dalam mode preview.'
     : !userId
     ? 'Masukkan User ID untuk melanjutkan.'
-    : requiresZone && !zoneId
-    ? 'Masukkan Zone ID untuk melanjutkan.'
+    : !isSingleId && !isRiotId && !zoneId
+    ? 'Masukkan Server ID untuk melanjutkan.'
     : !selectedProduct
     ? 'Pilih nominal untuk melanjutkan.'
     : paymentMethodsLoading
@@ -556,7 +565,7 @@ export default function GameDetailClient ({ slug }: { slug: string }) {
       const missingInput =
         userId.trim().length === 0
           ? userIdRef.current
-          : requiresZone && zoneId.trim().length === 0
+          : !isSingleId && !isRiotId && zoneId.trim().length === 0
           ? zoneIdRef.current
           : null
 
@@ -621,10 +630,10 @@ export default function GameDetailClient ({ slug }: { slug: string }) {
   const handleOpenConfirmModal = () => {
     if (!PURCHASES_ENABLED) return
 
-    if (!userId || !selectedProduct || (requiresZone && !zoneId)) {
+    if (!userId || !selectedProduct || (!isSingleId && !isRiotId && !zoneId)) {
       alert(
-        requiresZone && !zoneId
-          ? 'Mohon lengkapi User ID, Zone ID, dan pilih nominal.'
+        !isSingleId && !isRiotId
+          ? 'Mohon lengkapi User ID, Server ID, dan pilih nominal.'
           : 'Mohon lengkapi ID Player dan pilih nominal.'
       )
       return
@@ -647,10 +656,10 @@ export default function GameDetailClient ({ slug }: { slug: string }) {
       return
     }
 
-    if (!userId || !selectedProduct || (requiresZone && !zoneId)) {
+    if (!userId || !selectedProduct || (!isSingleId && !isRiotId && !zoneId)) {
       alert(
-        requiresZone && !zoneId
-          ? 'Mohon lengkapi User ID, Zone ID, dan pilih nominal.'
+        !isSingleId && !isRiotId
+          ? 'Mohon lengkapi User ID, Server ID, dan pilih nominal.'
           : 'Mohon lengkapi ID Player dan pilih nominal.'
       )
       return
@@ -660,19 +669,34 @@ export default function GameDetailClient ({ slug }: { slug: string }) {
     setShowConfirmModal(false)
 
     try {
+      const catalogTargetType =
+        (game?.target_type || 'SINGLE_ID').toUpperCase()
+      const isRiotId = catalogTargetType === 'RIOT_ID'
+      const isSingleId = catalogTargetType === 'SINGLE_ID'
+      const sendSecondary = !isRiotId && !isSingleId
+
+      const bodyData: Record<string, unknown> = {
+        product_id: selectedProduct.ID,
+        target: userId.trim(),
+        quote_key: selectedQuoteKey,
+        expected_total_amount:
+          totalAmount || selectedPaymentMethod?.total_amount || 0,
+        quantity: quantity,
+        promo_code: promoCode.trim() || undefined,
+      }
+
+      if (sendSecondary) {
+        bodyData.target_secondary = zoneId.trim() || undefined
+      }
+
+      if (contactInfo.trim()) {
+        bodyData.payer_phone = contactInfo.trim()
+      }
+
       const res = await fetch(`${API_BASE_URL}/checkout`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          product_id: selectedProduct.ID,
-          customer_phone: selectedTarget,
-          quote_key: selectedQuoteKey,
-          expected_total_amount:
-            totalAmount || selectedPaymentMethod?.total_amount || 0,
-          quantity: quantity,
-          contact_info: contactInfo.trim() || undefined,
-          promo_code: promoCode.trim() || undefined
-        })
+        body: JSON.stringify(bodyData),
       })
 
       const result = await res.json()
@@ -829,7 +853,10 @@ export default function GameDetailClient ({ slug }: { slug: string }) {
 
               <div ref={accountSectionRef}>
                 <AccountTargetFields
-                  requiresZone={requiresZone}
+                  targetType={catalogTargetType}
+                  targetLabel={game?.target_label || 'User ID'}
+                  targetSecondaryLabel={game?.target_secondary_label || 'Zone ID'}
+                  targetServerOptions={game?.target_server_options}
                   userId={userId}
                   zoneId={zoneId}
                   userIdRef={userIdRef}
@@ -846,7 +873,7 @@ export default function GameDetailClient ({ slug }: { slug: string }) {
                 selectedProduct={selectedProduct}
                 isAccountComplete={hasAccountData}
                 accountWarning={accountWarning}
-                requiresZone={requiresZone}
+                targetType={catalogTargetType}
                 formatPrice={formatIDR}
                 onSelect={handleSelectProduct}
               />
@@ -897,9 +924,9 @@ export default function GameDetailClient ({ slug }: { slug: string }) {
                   disabledReason={disabledReason}
                   isProcessing={isProcessing}
                   purchasesEnabled={PURCHASES_ENABLED}
-                  rows={summaryRows(game.name, selectedProduct, selectedTarget)} // Kuantitas sudah tidak perlu dikirim lewat rows lagi
+                  rows={summaryRows(game.name, selectedProduct, userId.trim())}
                   productAmountLabel={productAmountLabel}
-                  quantity={quantity} // Kuantitas dikirim lewat prop mandiri ini agar tampil di baris terpisah
+                  quantity={quantity}
                   paymentMethodLabel={paymentMethodLabel}
                   customerSurchargeLabel={customerSurchargeLabel}
                   hasCustomerSurcharge={customerSurcharge > 0}
@@ -919,9 +946,9 @@ export default function GameDetailClient ({ slug }: { slug: string }) {
                   disabledReason={disabledReason}
                   isProcessing={isProcessing}
                   purchasesEnabled={PURCHASES_ENABLED}
-                  rows={summaryRows(game.name, selectedProduct, selectedTarget)} // Kuantitas sudah tidak perlu dikirim lewat rows lagi
+                  rows={summaryRows(game.name, selectedProduct, userId.trim())}
                   productAmountLabel={productAmountLabel}
-                  quantity={quantity} // Kuantitas dikirim lewat prop mandiri ini agar tampil di baris terpisah
+                  quantity={quantity}
                   paymentMethodLabel={paymentMethodLabel}
                   customerSurchargeLabel={customerSurchargeLabel}
                   hasCustomerSurcharge={customerSurcharge > 0}

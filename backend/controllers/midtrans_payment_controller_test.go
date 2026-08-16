@@ -191,7 +191,7 @@ func TestBuildMidtransPaymentQuoteCheapProduct(t *testing.T) {
 
 	quote, err := buildMidtransPaymentQuote(
 		models.Product{Price: capital},
-		activation,
+		activation, 1,
 	)
 	if err != nil {
 		t.Fatalf("buildMidtransPaymentQuote() error = %v", err)
@@ -323,7 +323,7 @@ func TestBuildMidtransPaymentQuoteUsesProductGroupMarkup(t *testing.T) {
 		},
 	}
 
-	quote, err := buildMidtransPaymentQuote(product, activation)
+	quote, err := buildMidtransPaymentQuote(product, activation, 1)
 	if err != nil {
 		t.Fatalf("buildMidtransPaymentQuote() error = %v", err)
 	}
@@ -384,7 +384,7 @@ func TestBuildMidtransPaymentQuoteAppliesOnlyRequiredSurcharge(t *testing.T) {
 
 	quote, err := buildMidtransPaymentQuote(
 		models.Product{Price: capital},
-		activation,
+		activation, 1,
 	)
 	if err != nil {
 		t.Fatalf("buildMidtransPaymentQuote() error = %v", err)
@@ -478,7 +478,7 @@ func TestBuildMidtransPaymentQuoteAppliesOnlyRequiredSurcharge(t *testing.T) {
 func TestBuildMidtransPaymentQuoteLargeProductAllowsSafeVA(t *testing.T) {
 	activation := configureMidtransQuoteTest(t, "other_qris,dana,bca_va,seabank_va")
 
-	quote, err := buildMidtransPaymentQuote(models.Product{Price: 200_000}, activation)
+	quote, err := buildMidtransPaymentQuote(models.Product{Price: 200_000}, activation, 1)
 	if err != nil {
 		t.Fatalf("buildMidtransPaymentQuote() error = %v", err)
 	}
@@ -493,7 +493,7 @@ func TestBuildMidtransPaymentQuoteLargeProductAllowsSafeVA(t *testing.T) {
 func TestBuildMidtransPaymentQuoteDoesNotInventActiveMethods(t *testing.T) {
 	activation := configureMidtransQuoteTest(t, "other_qris")
 
-	quote, err := buildMidtransPaymentQuote(models.Product{Price: 50_000}, activation)
+	quote, err := buildMidtransPaymentQuote(models.Product{Price: 50_000}, activation, 1)
 	if err != nil {
 		t.Fatalf("buildMidtransPaymentQuote() error = %v", err)
 	}
@@ -510,7 +510,7 @@ func TestBuildMidtransPaymentQuoteDisablesCatalogWhenPreferenceIsUnverified(t *t
 		DisabledReason: midtransPreferenceUnavailableReason,
 	}
 
-	quote, err := buildMidtransPaymentQuote(models.Product{Price: 50_000}, activation)
+	quote, err := buildMidtransPaymentQuote(models.Product{Price: 50_000}, activation, 1)
 	if err != nil {
 		t.Fatalf("buildMidtransPaymentQuote() error = %v", err)
 	}
@@ -586,7 +586,7 @@ func TestMidtransPreferenceFailureDoesNotEnableAnyMethod(t *testing.T) {
 func TestBuildMidtransSnapPayloadUsesRebuiltQuote(t *testing.T) {
 	activation := configureMidtransQuoteTest(t, "other_qris")
 	product := models.Product{Code: "SKU-7", Name: "5 Diamonds", Price: 8_000}
-	quote, err := buildMidtransPaymentQuote(product, activation)
+	quote, err := buildMidtransPaymentQuote(product, activation, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -598,11 +598,11 @@ func TestBuildMidtransSnapPayloadUsesRebuiltQuote(t *testing.T) {
 	var request models.CheckoutRequest
 	if err := json.Unmarshal([]byte(`{
 		"product_id":7,
-		"customer_phone":"12345",
-		"quote_key":"v1:midtrans:other_qris",
-		"amount":1,
-		"total_amount":1,
-		"estimated_fee":0
+		"target":"12345",
+		"quote_key":"v2:midtrans:other_qris:q1",
+		"expected_total_amount":1,
+		"quantity":1,
+		"payment_method":"other_qris"
 	}`), &request); err != nil {
 		t.Fatal(err)
 	}
@@ -636,7 +636,7 @@ func TestBuildMidtransSnapPayloadUsesRebuiltQuote(t *testing.T) {
 func TestBuildMidtransSnapPayloadUsesSurchargedMethodTotal(t *testing.T) {
 	activation := configureMidtransQuoteTest(t, "other_qris,gopay")
 	product := models.Product{Code: "SKU-GOPAY", Name: "Large Product", Price: 1_800_000}
-	quote, err := buildMidtransPaymentQuote(product, activation)
+	quote, err := buildMidtransPaymentQuote(product, activation, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -649,7 +649,9 @@ func TestBuildMidtransSnapPayloadUsesSurchargedMethodTotal(t *testing.T) {
 		"INV-GOPAY",
 		product,
 		selected,
-		models.CheckoutRequest{CustomerPhone: "12345"},
+		models.CheckoutRequest{
+			Target: "12345",
+		},
 	)
 
 	if payload.TransactionDetails.GrossAmount != int64(selected.TotalAmount) {
@@ -844,7 +846,7 @@ func TestMidtransQuoteExamples(t *testing.T) {
 		t.Run(example.name, func(t *testing.T) {
 			quote, err := buildMidtransPaymentQuote(
 				models.Product{Price: example.capital},
-				activation,
+				activation, 1,
 			)
 			if err != nil {
 				t.Fatal(err)
@@ -855,5 +857,27 @@ func TestMidtransQuoteExamples(t *testing.T) {
 			}
 			t.Log(string(encoded))
 		})
+	}
+}
+
+func TestBuildMidtransPaymentQuoteQuantityMultiplier(t *testing.T) {
+	activation := configureMidtransQuoteTest(t, "other_qris,dana,bca_va")
+	product := models.Product{Price: 29_127}
+
+	quote1, err := buildMidtransPaymentQuote(product, activation, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	quote2, err := buildMidtransPaymentQuote(product, activation, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if quote2.ProductAmount != quote1.ProductAmount*2 {
+		t.Fatalf("quantity 2 product amount = %v, want %v", quote2.ProductAmount, quote1.ProductAmount*2)
+	}
+	if quote2.StartingPrice != quote1.StartingPrice*2 {
+		t.Fatalf("quantity 2 starting price = %v, want %v", quote2.StartingPrice, quote1.StartingPrice*2)
 	}
 }

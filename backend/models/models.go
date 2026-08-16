@@ -39,11 +39,18 @@ type Catalog struct {
 
 	IsActive      bool           `gorm:"default:true" json:"is_active"`
 	CheckIDCode   string         `json:"check_id_code"`
+	RequiresZone  bool           `json:"requires_zone" gorm:"default:false"`
 	CreatedAt     time.Time      `json:"created_at"`
 	UpdatedAt     time.Time      `json:"updated_at"`
 	DeletedAt     gorm.DeletedAt `gorm:"index" json:"-"`
 	ProductGroups []ProductGroup `gorm:"foreignKey:CatalogCardCode;references:CardCode;constraint:OnUpdate:CASCADE,OnDelete:RESTRICT;" json:"product_groups"`
 	Products      []Product      `gorm:"foreignKey:CatalogCardCode;references:CardCode;constraint:OnUpdate:CASCADE,OnDelete:RESTRICT;" json:"products"`
+
+	// --- [BARU] KONFIGURASI INPUT TARGET AKUN DINAMIS ---
+	TargetType          string `json:"target_type" gorm:"default:'SINGLE_ID'"`     // SINGLE_ID | DUAL_INPUT | SERVER_DROPDOWN | RIOT_ID | GENERIC
+	TargetLabel         string `json:"target_label" gorm:"default:'User ID'"`      // Contoh: "User ID", "UID", "Player ID", "Riot ID"
+	TargetSecondaryLabel string `json:"target_secondary_label" gorm:"default:'Zone ID'"` // Label untuk input secondary (mis. "Zone ID", "Server"). Tidak digunakan oleh SINGLE_ID, RIOT_ID, GENERIC kecuali konfigurasi memang requires.
+	TargetServerOptions string `json:"target_server_options"`                      // Contoh JSON/String: "Asia, America, Europe, TW_HK_MO"
 }
 
 // ProductGroup is an admin-managed section inside a catalog. Provider syncs
@@ -200,10 +207,13 @@ type TransactionActivity struct {
 // ==========================================
 type Transaction struct {
 	gorm.Model
-	InvoiceID     string  `json:"invoice_id" gorm:"unique"`
-	ProductID     uint    `json:"product_id"`
-	Product       Product `gorm:"foreignKey:ProductID;references:ID"`
-	CustomerPhone string  `json:"customer_phone"` // Target ID
+	InvoiceID       string  `json:"invoice_id" gorm:"unique"`
+	ProductID       uint    `json:"product_id"`
+	Quantity        int     `json:"quantity" gorm:"not null;default:1"`
+	Product         Product `gorm:"foreignKey:ProductID;references:ID"`
+	Target          string  `json:"target" gorm:"column:target"`
+	TargetSecondary string  `json:"target_secondary"`
+	TargetType      string  `json:"target_type"`
 
 	Amount  float64 `json:"amount"`  // Harga Jual
 	Capital float64 `json:"capital"` // Modal (Dari Digiflazz)
@@ -228,6 +238,7 @@ type Transaction struct {
 	PaymentProvider       string     `json:"payment_provider" gorm:"size:30;index"`
 	PaymentQuoteKey       string     `json:"payment_quote_key" gorm:"size:120;index"`
 	PaymentMethod         string     `json:"payment_method"`
+	ActualPaymentMethod   string     `json:"actual_payment_method" gorm:"size:40;index"`
 	PaymentURL            string     `json:"payment_url"`
 	PaymentReference      string     `json:"payment_reference" gorm:"size:100;index"`
 	PaymentFeeBearer      string     `json:"payment_fee_bearer" gorm:"size:20;index"`
@@ -262,13 +273,22 @@ type Transaction struct {
 
 	// Relasi ke Histori Aktivitas Transaksi
 	Activities []TransactionActivity `json:"activities" gorm:"foreignKey:TransactionID"`
+
+	VANumber    string `json:"va_number,omitempty" gorm:"size:100"`
+	VABank      string `json:"va_bank,omitempty" gorm:"size:30"`
+	BillerCode  string `json:"biller_code,omitempty" gorm:"size:30"`
+	BillKey     string `json:"bill_key,omitempty" gorm:"size:100"`
+	QRString    string `json:"qr_string,omitempty" gorm:"type:text"`
+	QRURL       string `json:"qr_url,omitempty" gorm:"type:text"`
+	DeeplinkURL string `json:"deeplink_url,omitempty" gorm:"type:text"`
+	PaymentCode string `json:"payment_code,omitempty" gorm:"size:100"`
 }
 
 // ==========================================
 // 🚀 4. DTO KHUSUS UNTUK RESPONSE LIST FRONTEND
 // ==========================================
 type MinimalProductDTO struct {
-	ID   uint   `json:"ID"` // 🔥 BALIKIN INI
+	ID   uint   `json:"ID"` //
 	Name string `json:"name"`
 	Code string `json:"code"`
 }
@@ -276,20 +296,21 @@ type MinimalProductDTO struct {
 type TransactionListDTO struct {
 	ID                  uint              `json:"ID"`
 	CreatedAt           time.Time         `json:"CreatedAt"`
-	UpdatedAt           time.Time         `json:"UpdatedAt"` // 🔥 BALIKIN INI
+	UpdatedAt           time.Time         `json:"UpdatedAt"`
 	InvoiceID           string            `json:"invoice_id"`
-	CustomerPhone       string            `json:"customer_phone"`
+	Target              string            `json:"target"`
 	Product             MinimalProductDTO `json:"Product"`
 	Amount              float64           `json:"amount"`
-	Capital             float64           `json:"capital"` // 🔥 BALIKIN INI
+	Capital             float64           `json:"capital"`
 	Profit              float64           `json:"profit"`
 	ProductAmount       float64           `json:"product_amount"`
 	StartingPrice       float64           `json:"starting_price"`
 	CustomerSurcharge   float64           `json:"customer_surcharge"`
 	PaymentMethod       string            `json:"payment_method"`
+	ActualPaymentMethod string            `json:"actual_payment_method" gorm:"size:40;index"`
 	PaymentProvider     string            `json:"payment_provider"`
 	PaymentQuoteKey     string            `json:"payment_quote_key"`
-	PaymentURL          string            `json:"payment_url"` // 🔥 BALIKIN INI
+	PaymentURL          string            `json:"payment_url"`
 	PaymentReference    string            `json:"payment_reference"`
 	PaymentFeeBearer    string            `json:"payment_fee_bearer"`
 	PaymentFeeEstimated float64           `json:"payment_fee_estimated"`
@@ -326,9 +347,12 @@ type LoginRequest struct {
 
 type CheckoutRequest struct {
 	ProductID           uint    `json:"product_id"`
-	CustomerPhone       string  `json:"customer_phone"`
+	Target              string  `json:"target"`
+	TargetSecondary     string  `json:"target_secondary"`
+	TargetType          string  `json:"target_type"`
 	QuoteKey            string  `json:"quote_key"`
 	ExpectedTotalAmount float64 `json:"expected_total_amount"`
+	Quantity            int     `json:"quantity"`
 	PaymentMethod       string  `json:"payment_method"`
 	CustomerName        string  `json:"customer_name"`
 	Email               string  `json:"email"`
@@ -338,6 +362,9 @@ type CheckoutRequest struct {
 type ManualOrderRequest struct {
 	SKU             string  `json:"sku"`
 	TargetID        string  `json:"target_id"`
+	Target          string  `json:"target"`
+	TargetSecondary string  `json:"target_secondary"`
+	TargetType      string  `json:"target_type"`
 	SellingPrice    float64 `json:"selling_price"`
 	ManualOrderType string  `json:"manual_order_type"`
 	InjectReason    string  `json:"inject_reason"`

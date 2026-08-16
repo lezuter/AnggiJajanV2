@@ -114,6 +114,39 @@ func CreateCatalog(c *fiber.Ctx) error {
 		input.Slug = strings.ToLower(strings.ReplaceAll(input.Name, " ", "-"))
 	}
 
+	// Validasi TargetType.
+	input.TargetType = strings.TrimSpace(input.TargetType)
+	switch input.TargetType {
+	case "SINGLE_ID", "DUAL_INPUT", "SERVER_DROPDOWN", "RIOT_ID", "GENERIC":
+		// ok
+	default:
+		if input.TargetType == "" {
+			input.TargetType = "SINGLE_ID"
+		} else {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"error": "TargetType tidak dikenal: " + input.TargetType +
+						". Gunakan SINGLE_ID, DUAL_INPUT, SERVER_DROPDOWN, RIOT_ID, atau GENERIC.",
+			})
+		}
+	}
+
+	// Validasi hubungan TargetType <-> TargetSecondaryLabel / TargetServerOptions.
+	switch input.TargetType {
+	case "DUAL_INPUT":
+		if strings.TrimSpace(input.TargetSecondaryLabel) == "" {
+			input.TargetSecondaryLabel = "Zone ID"
+		}
+	case "SERVER_DROPDOWN":
+		if strings.TrimSpace(input.TargetSecondaryLabel) == "" {
+			input.TargetSecondaryLabel = "Server"
+		}
+		if strings.TrimSpace(input.TargetServerOptions) == "" {
+			input.TargetServerOptions = "Asia, America, Europe, TW_HK_MO"
+		}
+	case "SINGLE_ID", "RIOT_ID", "GENERIC":
+		// tidak perlu secondary label
+	}
+
 	// Create
 	if err := database.DB.Create(&input).Error; err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": "Gagal membuat katalog. Pastikan Kode/Slug unik."})
@@ -149,9 +182,56 @@ func UpdateCatalog(c *fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"error": "Invalid input"})
 	}
 
+	// Validasi TargetType.
+	input.TargetType = strings.TrimSpace(input.TargetType)
+	switch input.TargetType {
+	case "SINGLE_ID", "DUAL_INPUT", "SERVER_DROPDOWN", "RIOT_ID", "GENERIC":
+		// ok
+	default:
+		if input.TargetType == "" {
+			input.TargetType = catalog.TargetType
+		} else {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"error": "TargetType tidak dikenal: " + input.TargetType +
+						". Gunakan SINGLE_ID, DUAL_INPUT, SERVER_DROPDOWN, RIOT_ID, atau GENERIC.",
+			})
+		}
+	}
+
+	// Validasi hubungan TargetType <-> TargetSecondaryLabel / TargetServerOptions.
+	switch input.TargetType {
+	case "DUAL_INPUT":
+		if strings.TrimSpace(input.TargetSecondaryLabel) == "" {
+			input.TargetSecondaryLabel = catalog.TargetSecondaryLabel
+		}
+		if strings.TrimSpace(input.TargetSecondaryLabel) == "" {
+			input.TargetSecondaryLabel = "Zone ID"
+		}
+	case "SERVER_DROPDOWN":
+		if strings.TrimSpace(input.TargetSecondaryLabel) == "" {
+			input.TargetSecondaryLabel = catalog.TargetSecondaryLabel
+		}
+		if strings.TrimSpace(input.TargetSecondaryLabel) == "" {
+			input.TargetSecondaryLabel = "Server"
+		}
+		if strings.TrimSpace(input.TargetServerOptions) == "" {
+			input.TargetServerOptions = catalog.TargetServerOptions
+		}
+		if strings.TrimSpace(input.TargetServerOptions) == "" {
+			input.TargetServerOptions = "Asia, America, Europe, TW_HK_MO"
+		}
+	case "SINGLE_ID", "RIOT_ID", "GENERIC":
+		// tidak perlu secondary label
+	}
+
 	// Update Field
 	catalog.Name = input.Name
 	catalog.Slug = input.Slug
+	catalog.RequiresZone = input.RequiresZone
+	catalog.TargetType = input.TargetType
+	catalog.TargetLabel = input.TargetLabel
+	catalog.TargetSecondaryLabel = input.TargetSecondaryLabel
+	catalog.TargetServerOptions = input.TargetServerOptions
 	catalog.ShortName = input.ShortName
 	catalog.Category = input.Category
 	catalog.Publisher = input.Publisher

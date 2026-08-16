@@ -1,8 +1,11 @@
 package payments
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"math"
 	"net/http"
 	"os"
@@ -68,6 +71,79 @@ type midtransLimitOverride struct {
 	MinAmount     *float64 `json:"min_amount"`
 	MaximumAmount *float64 `json:"maximum_amount"`
 	MaxAmount     *float64 `json:"max_amount"`
+}
+
+type MidtransAction struct {
+	Name   string `json:"name"`
+	Method string `json:"method"`
+	URL    string `json:"url"`
+}
+
+type MidtransVANumber struct {
+	Bank     string `json:"bank"`
+	VANumber string `json:"va_number"`
+}
+
+type MidtransCoreChargeResponse struct {
+	StatusCode      string             `json:"status_code"`
+	StatusMessage   string             `json:"status_message"`
+	TransactionID   string             `json:"transaction_id"`
+	OrderID         string             `json:"order_id"`
+	GrossAmount     string             `json:"gross_amount"`
+	PaymentType     string             `json:"payment_type"`
+	Actions         []MidtransAction   `json:"actions"`
+	VANumbers       []MidtransVANumber `json:"va_numbers"`
+	PermataVANumber string             `json:"permata_va_number"`
+	BillerCode      string             `json:"biller_code"`
+	BillKey         string             `json:"bill_key"`
+	QRString        string             `json:"qr_string"`
+	PaymentCode     string             `json:"payment_code"`
+	ExpiryTime      string             `json:"expiry_time"`
+}
+
+func ChargeMidtransCoreAPI(ctx context.Context, payload map[string]interface{}) (MidtransCoreChargeResponse, error) {
+	config, err := ResolveMidtransRuntimeConfig()
+	if err != nil {
+		return MidtransCoreChargeResponse{}, err
+	}
+
+	requestBody, err := json.Marshal(payload)
+	if err != nil {
+		return MidtransCoreChargeResponse{}, fmt.Errorf("gagal membuat payload Core API: %w", err)
+	}
+
+	endpoint := config.StatusAPIBaseURL + "/v2/charge"
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(requestBody))
+	if err != nil {
+		return MidtransCoreChargeResponse{}, err
+	}
+
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Content-Type", "application/json")
+	req.SetBasicAuth(config.ServerKey, "")
+
+	client := &http.Client{Timeout: 15 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return MidtransCoreChargeResponse{}, fmt.Errorf("request Core API gagal: %w", err)
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return MidtransCoreChargeResponse{}, err
+	}
+
+	var chargeResp MidtransCoreChargeResponse
+	if err := json.Unmarshal(bodyBytes, &chargeResp); err != nil {
+		return MidtransCoreChargeResponse{}, fmt.Errorf("response Core API tidak valid")
+	}
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return chargeResp, fmt.Errorf("Midtrans menolak transaksi: %s", chargeResp.StatusMessage)
+	}
+
+	return chargeResp, nil
 }
 
 func ResolveMidtransMode() (string, error) {

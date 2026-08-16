@@ -31,7 +31,7 @@ interface ProductSelectorProps {
   selectedProduct: PurchaseProduct | null
   isAccountComplete: boolean
   accountWarning: boolean
-  requiresZone: boolean
+  targetType?: string
   formatPrice: (value?: number) => string
   onSelect: (product: PurchaseProduct) => void
 }
@@ -186,7 +186,7 @@ export default function ProductSelector ({
   selectedProduct,
   isAccountComplete,
   accountWarning,
-  requiresZone,
+  targetType = 'SINGLE_ID',
   formatPrice,
   onSelect
 }: ProductSelectorProps) {
@@ -311,8 +311,8 @@ export default function ProductSelector ({
             role='alert'
             className='mt-2 text-xs leading-5 text-fuchsia-200/[0.72]'
           >
-            {requiresZone
-              ? 'Lengkapi User ID dan Zone ID pada bagian Data akun di atas.'
+            {(targetType === 'DUAL_INPUT' || targetType === 'SERVER_DROPDOWN')
+              ? 'Lengkapi User ID dan Zone/Server ID pada bagian Data akun di atas.'
               : 'Lengkapi User ID pada bagian Data akun di atas.'}
           </p>
         )}
