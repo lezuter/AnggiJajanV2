@@ -186,7 +186,7 @@ export default function ProductSelector ({
   selectedProduct,
   isAccountComplete,
   accountWarning,
-  targetType = 'SINGLE_ID',
+  targetType = 'SINGLE_UID',
   formatPrice,
   onSelect
 }: ProductSelectorProps) {
@@ -311,7 +311,7 @@ export default function ProductSelector ({
             role='alert'
             className='mt-2 text-xs leading-5 text-fuchsia-200/[0.72]'
           >
-            {(targetType === 'DUAL_INPUT' || targetType === 'SERVER_DROPDOWN')
+            {targetType === 'UID_ZONE' || targetType === 'UID_SERVER'
               ? 'Lengkapi User ID dan Zone/Server ID pada bagian Data akun di atas.'
               : 'Lengkapi User ID pada bagian Data akun di atas.'}
           </p>

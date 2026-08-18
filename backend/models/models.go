@@ -47,9 +47,9 @@ type Catalog struct {
 	Products      []Product      `gorm:"foreignKey:CatalogCardCode;references:CardCode;constraint:OnUpdate:CASCADE,OnDelete:RESTRICT;" json:"products"`
 
 	// --- [BARU] KONFIGURASI INPUT TARGET AKUN DINAMIS ---
-	TargetType          string `json:"target_type" gorm:"default:'SINGLE_ID'"`     // SINGLE_ID | DUAL_INPUT | SERVER_DROPDOWN | RIOT_ID | GENERIC
-	TargetLabel         string `json:"target_label" gorm:"default:'User ID'"`      // Contoh: "User ID", "UID", "Player ID", "Riot ID"
-	TargetSecondaryLabel string `json:"target_secondary_label" gorm:"default:'Zone ID'"` // Label untuk input secondary (mis. "Zone ID", "Server"). Tidak digunakan oleh SINGLE_ID, RIOT_ID, GENERIC kecuali konfigurasi memang requires.
+	TargetType          string `json:"target_type" gorm:"default:'SINGLE_UID'"`     // SINGLE_UID | UID_ZONE | UID_SERVER | STRING_UID
+	TargetLabel         string `json:"target_label" gorm:"default:'User ID'"`      // Contoh: "User ID", "UID", "Player ID"
+	TargetSecondaryLabel string `json:"target_secondary_label" gorm:"default:'Zone ID'"` // Label untuk input secondary (mis. "Zone ID", "Server"). Tidak digunakan oleh SINGLE_UID, STRING_UID kecuali konfigurasi memang requires.
 	TargetServerOptions string `json:"target_server_options"`                      // Contoh JSON/String: "Asia, America, Europe, TW_HK_MO"
 }
 

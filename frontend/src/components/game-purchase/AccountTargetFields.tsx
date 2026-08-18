@@ -21,9 +21,9 @@ const inputClassName =
   'mt-3 h-12 w-full rounded-2xl border border-white/[0.08] bg-white/[0.025] px-4 text-sm text-white outline-none focus:outline-none focus-visible:outline-none transition-[border-color,background-color] duration-300 placeholder:text-white/[0.28] hover:border-white/[0.14]'
 
 export default function AccountTargetFields ({
-  targetType = 'SINGLE_ID',
-  targetLabel = 'User ID',
-  targetSecondaryLabel = 'Zone ID',
+  targetType = 'SINGLE_UID',
+  targetLabel,
+  targetSecondaryLabel,
   targetServerOptions = '',
   userId,
   zoneId,
@@ -34,35 +34,64 @@ export default function AccountTargetFields ({
   onUserIdChange,
   onZoneIdChange
 }: AccountTargetFieldsProps) {
-  const isDualInput = targetType === 'DUAL_INPUT'
-  const isServerDropdown = targetType === 'SERVER_DROPDOWN'
-  const isRiotID = targetType === 'RIOT_ID'
-  const isGeneric = targetType === 'GENERIC'
+  const isUidZone = targetType === 'UID_ZONE'
+  const isUidServer = targetType === 'UID_SERVER'
+  const isStringUid = targetType === 'STRING_UID'
+  const isUserIdNumeric = isUidZone || isUidServer || targetType === 'SINGLE_UID'
+  const isZoneIdNumeric = isUidZone
 
   // Parsing opsi server jika berupa string koma (misal: "Asia, America, Europe")
   const serverOptions = targetServerOptions
     ? targetServerOptions.split(',').map(s => s.trim()).filter(Boolean)
     : ['Asia', 'America', 'Europe', 'TW_HK_MO']
 
+  // Label semantik: gunakan label dari admin jika diisi, otherwise fallback tipe
+  const effectivePrimaryLabel =
+    targetLabel?.trim()
+      ? targetLabel.trim()
+      : isUidServer
+      ? 'UID'
+      : isStringUid
+      ? 'String ID'
+      : 'User ID'
+
+  const effectiveSecondaryLabel =
+    targetSecondaryLabel?.trim()
+      ? targetSecondaryLabel.trim()
+      : isUidServer
+      ? 'Server'
+      : 'Zone ID'
+
+  // Sanitasi onChange: bersihkan non-angka pada tipe numerik (UID_ZONE dan UID_SERVER),
+  // UID_SERVER memilih opsi teks, bukan mengetik angka.
+  // STRING_UID boleh huruf bebas tapi tanpa spasi.
+  const sanitizeUserId = (val: string) => {
+    if (isStringUid) return val.replace(/\s/g, '')
+    if (isUserIdNumeric) return val.replace(/\D/g, '')
+    return val
+  }
+  const sanitizeZoneId = (val: string) =>
+    isZoneIdNumeric ? val.replace(/\D/g, '') : val
+
   const isUserIdMissing = showWarning && userId.trim().length === 0
-  const isZoneIdMissing = showWarning && (isDualInput || isServerDropdown) && zoneId.trim().length === 0
+  const isZoneIdMissing = showWarning && (isUidZone || isUidServer) && zoneId.trim().length === 0
 
   const warningMessage =
     isUserIdMissing && isZoneIdMissing
-      ? `Lengkapi ${targetLabel} dan ${targetSecondaryLabel} untuk memilih nominal.`
+      ? `Lengkapi ${effectivePrimaryLabel} dan ${effectiveSecondaryLabel} untuk memilih nominal.`
       : isUserIdMissing
-      ? `Lengkapi ${targetLabel} untuk memilih nominal.`
+      ? `Lengkapi ${effectivePrimaryLabel} untuk memilih nominal.`
       : isZoneIdMissing
-      ? `Lengkapi ${targetSecondaryLabel} untuk memilih nominal.`
+      ? `Lengkapi ${effectiveSecondaryLabel} untuk memilih nominal.`
       : ''
 
-  const placeholderText = isRiotID
-    ? 'Riot ID'
-    : isGeneric
-    ? targetLabel
-    : targetLabel.toLowerCase().includes('growid')
-    ? 'Masukkan GrowID'
-    : `Masukkan ${targetLabel}`
+  const placeholderText = targetLabel?.trim()
+    ? targetLabel.toLowerCase().includes('growid')
+      ? 'Masukkan GrowID'
+      : `Masukkan ${targetLabel.trim()}`
+    : isStringUid
+    ? 'String ID'
+    : `Masukkan ${effectivePrimaryLabel}`
 
   return (
     <section
@@ -103,7 +132,7 @@ export default function AccountTargetFields ({
 
       <div
         className={`mt-7 grid gap-5 ${
-          isDualInput || isServerDropdown
+          isUidZone || isUidServer
             ? 'sm:grid-cols-[minmax(0,1.35fr)_minmax(180px,0.65fr)] sm:items-end'
             : 'max-w-2xl'
         }`}
@@ -114,7 +143,7 @@ export default function AccountTargetFields ({
             htmlFor='game-user-id'
             className='inline-flex items-center gap-1 text-xs font-medium text-white/[0.68]'
           >
-            {targetLabel}
+            {effectivePrimaryLabel}
             <span aria-hidden='true' className='text-fuchsia-300/[0.8]'>*</span>
             <span className='sr-only'>Wajib</span>
           </label>
@@ -124,6 +153,7 @@ export default function AccountTargetFields ({
             name='game-user-id'
             type='text'
             autoComplete='off'
+            inputMode={isUserIdNumeric ? 'numeric' : undefined}
             placeholder={placeholderText}
             className={`${inputClassName} ${
               isUserIdMissing
@@ -131,19 +161,19 @@ export default function AccountTargetFields ({
                 : ''
             }`}
             value={userId}
-            onChange={event => onUserIdChange(event.target.value)}
+            onChange={event => onUserIdChange(sanitizeUserId(event.target.value))}
             required
           />
         </div>
 
-        {/* Field 2A: Zone ID / Server ID (Dual Input) */}
-        {isDualInput && (
+        {/* Field 2A: Zone ID (UID_ZONE) */}
+        {isUidZone && (
           <div className='min-w-0'>
             <label
               htmlFor='game-zone-id'
               className='inline-flex items-center gap-1 text-xs font-medium text-white/[0.68]'
             >
-              {targetSecondaryLabel}
+              {effectiveSecondaryLabel}
               <span aria-hidden='true' className='text-fuchsia-300/[0.8]'>*</span>
               <span className='sr-only'>Wajib</span>
             </label>
@@ -153,27 +183,28 @@ export default function AccountTargetFields ({
               name='game-zone-id'
               type='text'
               autoComplete='off'
-              placeholder={`Masukkan ${targetSecondaryLabel}`}
+              inputMode={isZoneIdNumeric ? 'numeric' : undefined}
+              placeholder={`Masukkan ${effectiveSecondaryLabel}`}
               className={`${inputClassName} ${
                 isZoneIdMissing
                   ? 'border-fuchsia-400/55 bg-fuchsia-400/[0.025]'
                   : ''
               }`}
               value={zoneId}
-              onChange={event => onZoneIdChange(event.target.value)}
+              onChange={event => onZoneIdChange(sanitizeZoneId(event.target.value))}
               required
             />
           </div>
         )}
 
-        {/* Field 2B: Server Selector Dropdown (Genshin, Honkai, dll.) */}
-        {isServerDropdown && (
+        {/* Field 2B: Server Selector Dropdown (UID_SERVER) */}
+        {isUidServer && (
           <div className='min-w-0'>
             <label
               htmlFor='game-server-select'
               className='inline-flex items-center gap-1 text-xs font-medium text-white/[0.68]'
             >
-              {targetSecondaryLabel}
+              {effectiveSecondaryLabel}
               <span aria-hidden='true' className='text-fuchsia-300/[0.8]'>*</span>
               <span className='sr-only'>Wajib</span>
             </label>
@@ -184,7 +215,7 @@ export default function AccountTargetFields ({
               className={`${inputClassName} cursor-pointer [&>option]:bg-slate-900 [&>option]:text-white`}
               required
             >
-              <option value=''>{targetSecondaryLabel}</option>
+              <option value=''>Pilih {effectiveSecondaryLabel}</option>
               {serverOptions.map(srv => (
                 <option key={srv} value={srv}>
                   {srv}

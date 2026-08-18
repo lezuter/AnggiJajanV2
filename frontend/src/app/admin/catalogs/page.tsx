@@ -101,7 +101,7 @@ export default function AdminCatalogPage () {
     banner_url: '',
     check_id_code: '',
     requires_zone: false,
-    target_type: 'SINGLE_ID',
+    target_type: 'SINGLE_UID',
     target_label: 'User ID',
     target_secondary_label: 'Zone ID',
     target_server_options: '',
@@ -152,9 +152,9 @@ export default function AdminCatalogPage () {
       banner_url: '',
       check_id_code: '',
       requires_zone: false,
-      target_type: 'SINGLE_ID',
-      target_label: 'User ID',
-      target_secondary_label: 'Zone ID',
+      target_type: 'SINGLE_UID',
+      target_label: '',
+      target_secondary_label: '',
       target_server_options: '',
       is_active: true,
       is_public: true,
@@ -182,7 +182,7 @@ export default function AdminCatalogPage () {
       check_id_code: cat.check_id_code || '',
       requires_zone: cat.requires_zone ?? false,
       target_type:
-        cat.target_type || (cat.requires_zone ? 'DUAL_INPUT' : 'SINGLE_ID'),
+        cat.target_type || (cat.requires_zone ? 'UID_ZONE' : 'SINGLE_UID'),
       target_label: cat.target_label || 'User ID',
       target_secondary_label: cat.target_secondary_label || 'Zone ID',
       target_server_options: cat.target_server_options || '',
@@ -213,7 +213,7 @@ export default function AdminCatalogPage () {
       ...formData,
       // Sinkronisasi otomatis boolean requires_zone
       requires_zone:
-        formData.requires_zone || formData.target_type === 'DUAL_INPUT',
+        formData.requires_zone || formData.target_type === 'UID_ZONE',
       markup_percent: markupPercent
     }
 
@@ -252,9 +252,7 @@ export default function AdminCatalogPage () {
   // --- DELETE CATALOG HANDLER ---
   const handleDelete = async (cat: Catalog) => {
     const confirmDelete = confirm(
-      `Yakin ingin menghapus katalog "${
-        cat.name || cat.cardcode
-      }"?\n\nPerhatian: Katalog yang masih memiliki daftar produk atau grup produk tidak dapat dihapus.`
+      `Yakin ingin menghapus katalog "${cat.name || cat.cardcode}"?\n\nPerhatian: Katalog yang masih memiliki daftar produk atau grup produk tidak dapat dihapus.`
     )
     if (!confirmDelete) return
 
@@ -374,13 +372,11 @@ export default function AdminCatalogPage () {
                       {/* TARGET INPUT TYPE */}
                       <td className='py-4 px-2'>
                         <span className='inline-flex rounded-full border border-white/[0.08] bg-white/[0.025] px-2.5 py-1 font-mono text-[9px] uppercase tracking-wider text-white/[0.68]'>
-                          {cat.target_type === 'DUAL_INPUT' || cat.requires_zone
-                            ? 'ID + Zone'
-                            : cat.target_type === 'SERVER_DROPDOWN'
-                            ? 'ID + Server'
-                            : cat.target_type === 'RIOT_ID'
-                            ? 'Riot ID'
-                            : 'Single ID'}
+                          {cat.target_type === 'UID_ZONE' || cat.requires_zone
+                            ? 'UID + Zone'
+                            : cat.target_type === 'UID_SERVER'
+                            ? 'UID + Server'
+                            : 'Single UID'}
                         </span>
                       </td>
 
@@ -756,17 +752,17 @@ export default function AdminCatalogPage () {
                         }
                         className='w-full bg-[#161224] border border-white/[0.1] rounded-xl p-3 text-white focus:border-purple-500/50 outline-none text-xs'
                       >
-                        <option value='SINGLE_ID'>
-                          Single ID (Free Fire, PUBG, GrowID, dll)
+                        <option value='SINGLE_UID'>
+                          Single UID (Free Fire, PUBG, GrowID, dll)
                         </option>
-                        <option value='DUAL_INPUT'>
-                          Dual Input (User ID + Secondary ID)
+                        <option value='UID_ZONE'>
+                          UID + Zone (User ID + Secondary ID)
                         </option>
-                        <option value='SERVER_DROPDOWN'>
-                          ID + Dropdown Server (Genshin, Honkai, dll)
+                        <option value='UID_SERVER'>
+                          UID + Server (ID + Dropdown Server)
                         </option>
-                        <option value='RIOT_ID'>
-                          Riot ID (Valorant, LoL - Riot ID format)
+                        <option value='STRING_UID'>
+                          String UID (text tanpa (spasi), mis. Riot ID, Nickname, dll)
                         </option>
                       </select>
                     </div>
@@ -789,27 +785,29 @@ export default function AdminCatalogPage () {
                       />
                     </div>
 
-                    {formData.target_type === 'DUAL_INPUT' && (
+                    {formData.target_type === 'UID_ZONE' && (
                       <div>
                         <label className='text-[10px] font-bold text-purple-300/70 uppercase tracking-widest mb-1 block'>
-                            Target Secondary Label
-                          </label>
-                          <input
-                            type='text'
-                            value={formData.target_secondary_label}
-                                  onChange={e =>
-                                    setFormData({
-                                      ...formData,
-                                      target_secondary_label: e.target.value
-                                    })
-                                  }
-                            className='w-full bg-white/[0.02] border border-white/[0.05] rounded-xl p-3 text-white focus:border-purple-500/50 outline-none text-sm'
-                            placeholder='Contoh: Zone ID, Server'
-                          />
+                          Target Secondary Label
+                        </label>
+                        <input
+                          type='text'
+                          value={formData.target_secondary_label}
+                          onChange={e =>
+                            setFormData({
+                              ...formData,
+                              target_secondary_label: e.target.value
+                            })
+                          }
+                          className='w-full bg-white/[0.02] border border-white/[0.05] rounded-xl p-3 text-white focus:border-purple-500/50 outline-none text-sm'
+                          placeholder='Contoh: Zone ID'
+                        />
                       </div>
                     )}
 
-                    {formData.target_type === 'SERVER_DROPDOWN' && (
+
+
+                    {formData.target_type === 'UID_SERVER' && (
                       <div>
                         <label className='text-[10px] font-bold text-purple-300/70 uppercase tracking-widest mb-1 block'>
                           Opsi Server (Pisahkan koma)

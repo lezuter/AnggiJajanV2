@@ -24,7 +24,7 @@ export interface Transaction {
    * Catalog.TargetSecondaryLabel. Bukan bagian dari target utama.
    */
   target_secondary?: string;
-  /** Tipe target yang didefinisikan di catalog: SINGLE_ID | DUAL_INPUT | SERVER_DROPDOWN | RIOT_ID | GENERIC. */
+  /** Tipe target yang didefinisikan di catalog: SINGLE_UID | UID_ZONE | UID_SERVER | STRING_UID. */
   target_type?: string;
   amount: number;
   capital: number;

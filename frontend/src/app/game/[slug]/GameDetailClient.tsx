@@ -45,6 +45,7 @@ interface CatalogMetadata {
   target_type?: string
   target_label?: string
   target_secondary_label?: string
+  target_zone_label?: string
   target_server_options?: string
 }
 
@@ -109,7 +110,11 @@ const toPreviewCatalog = (catalog: PublicCatalog): Catalog => ({
   description: catalog.description,
   accent: catalog.accent,
   shortName: catalog.shortName,
-  productSections: []
+  productSections: [],
+  target_type: undefined,
+  target_label: undefined,
+  target_secondary_label: undefined,
+  target_server_options: undefined,
 })
 
 const normalizeProducts = (products: Product[] = [], checkIdCode?: string) => {
@@ -367,7 +372,11 @@ export default function GameDetailClient ({ slug }: { slug: string }) {
             data.shortName?.trim() ||
             previewCatalog?.shortName,
           check_id_code: data.check_id_code,
-          productSections
+          productSections,
+          target_type: data.target_type,
+          target_label: data.target_label,
+          target_secondary_label: data.target_secondary_label || data.target_zone_label,
+          target_server_options: data.target_server_options,
         })
       } catch (error) {
         if (!previewCatalog) {
@@ -482,12 +491,12 @@ export default function GameDetailClient ({ slug }: { slug: string }) {
     'AJ'
 
   const catalogTargetType =
-    (game?.target_type || 'SINGLE_ID').toUpperCase()
-  const isSingleId = catalogTargetType === 'SINGLE_ID'
-  const isRiotId = catalogTargetType === 'RIOT_ID'
+    (game?.target_type || 'SINGLE_UID').toUpperCase()
+  const isSingleUid = catalogTargetType === 'SINGLE_UID'
+  const isStringUid = catalogTargetType === 'STRING_UID'
   const requiresSecondary =
-    catalogTargetType === 'DUAL_INPUT' ||
-    catalogTargetType === 'SERVER_DROPDOWN'
+    catalogTargetType === 'UID_ZONE' ||
+    catalogTargetType === 'UID_SERVER'
 
   const hasAccountData =
     userId.trim().length > 0 && (!requiresSecondary || zoneId.trim().length > 0)
@@ -538,18 +547,25 @@ export default function GameDetailClient ({ slug }: { slug: string }) {
     PURCHASES_ENABLED &&
     Boolean(selectedProduct) &&
     Boolean(userId) &&
-    (isSingleId || isRiotId || Boolean(zoneId)) &&
+    (!requiresSecondary || Boolean(zoneId)) &&
     Boolean(selectedQuoteKey) &&
     Boolean(selectedPaymentMethod?.enabled) &&
     !paymentMethodsLoading &&
     !paymentMethodsError
 
+  const primaryTargetLabel =
+    game?.target_label?.trim() || 'User ID'
+  const secondaryTargetLabel =
+    game?.target_secondary_label?.trim() ||
+    game?.target_zone_label?.trim() ||
+    'Server ID'
+
   const disabledReason = !PURCHASES_ENABLED
     ? 'Katalog masih dapat dilihat dalam mode preview.'
     : !userId
-    ? 'Masukkan User ID untuk melanjutkan.'
-    : !isSingleId && !isRiotId && !zoneId
-    ? 'Masukkan Server ID untuk melanjutkan.'
+    ? `Masukkan ${primaryTargetLabel} untuk melanjutkan.`
+    : requiresSecondary && !zoneId
+    ? `Masukkan ${secondaryTargetLabel} untuk melanjutkan.`
     : !selectedProduct
     ? 'Pilih nominal untuk melanjutkan.'
     : paymentMethodsLoading
@@ -565,7 +581,7 @@ export default function GameDetailClient ({ slug }: { slug: string }) {
       const missingInput =
         userId.trim().length === 0
           ? userIdRef.current
-          : !isSingleId && !isRiotId && zoneId.trim().length === 0
+          : requiresSecondary && zoneId.trim().length === 0
           ? zoneIdRef.current
           : null
 
@@ -630,9 +646,9 @@ export default function GameDetailClient ({ slug }: { slug: string }) {
   const handleOpenConfirmModal = () => {
     if (!PURCHASES_ENABLED) return
 
-    if (!userId || !selectedProduct || (!isSingleId && !isRiotId && !zoneId)) {
+    if (!userId || !selectedProduct || (requiresSecondary && !zoneId)) {
       alert(
-        !isSingleId && !isRiotId
+        requiresSecondary
           ? 'Mohon lengkapi User ID, Server ID, dan pilih nominal.'
           : 'Mohon lengkapi ID Player dan pilih nominal.'
       )
@@ -656,9 +672,9 @@ export default function GameDetailClient ({ slug }: { slug: string }) {
       return
     }
 
-    if (!userId || !selectedProduct || (!isSingleId && !isRiotId && !zoneId)) {
+    if (!userId || !selectedProduct || (requiresSecondary && !zoneId)) {
       alert(
-        !isSingleId && !isRiotId
+        requiresSecondary
           ? 'Mohon lengkapi User ID, Server ID, dan pilih nominal.'
           : 'Mohon lengkapi ID Player dan pilih nominal.'
       )
@@ -670,10 +686,10 @@ export default function GameDetailClient ({ slug }: { slug: string }) {
 
     try {
       const catalogTargetType =
-        (game?.target_type || 'SINGLE_ID').toUpperCase()
-      const isRiotId = catalogTargetType === 'RIOT_ID'
-      const isSingleId = catalogTargetType === 'SINGLE_ID'
-      const sendSecondary = !isRiotId && !isSingleId
+        (game?.target_type || 'SINGLE_UID').toUpperCase()
+      const sendSecondary =
+        catalogTargetType === 'UID_ZONE' ||
+        catalogTargetType === 'UID_SERVER'
 
       const bodyData: Record<string, unknown> = {
         product_id: selectedProduct.ID,

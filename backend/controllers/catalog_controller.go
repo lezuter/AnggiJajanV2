@@ -117,33 +117,33 @@ func CreateCatalog(c *fiber.Ctx) error {
 	// Validasi TargetType.
 	input.TargetType = strings.TrimSpace(input.TargetType)
 	switch input.TargetType {
-	case "SINGLE_ID", "DUAL_INPUT", "SERVER_DROPDOWN", "RIOT_ID", "GENERIC":
+	case "SINGLE_UID", "UID_ZONE", "UID_SERVER", "STRING_UID":
 		// ok
 	default:
 		if input.TargetType == "" {
-			input.TargetType = "SINGLE_ID"
+			input.TargetType = "SINGLE_UID"
 		} else {
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 				"error": "TargetType tidak dikenal: " + input.TargetType +
-						". Gunakan SINGLE_ID, DUAL_INPUT, SERVER_DROPDOWN, RIOT_ID, atau GENERIC.",
+					". Gunakan SINGLE_UID, UID_ZONE, UID_SERVER, atau STRING_UID.",
 			})
 		}
 	}
 
 	// Validasi hubungan TargetType <-> TargetSecondaryLabel / TargetServerOptions.
 	switch input.TargetType {
-	case "DUAL_INPUT":
+	case "UID_ZONE":
 		if strings.TrimSpace(input.TargetSecondaryLabel) == "" {
 			input.TargetSecondaryLabel = "Zone ID"
 		}
-	case "SERVER_DROPDOWN":
+	case "UID_SERVER":
 		if strings.TrimSpace(input.TargetSecondaryLabel) == "" {
 			input.TargetSecondaryLabel = "Server"
 		}
 		if strings.TrimSpace(input.TargetServerOptions) == "" {
 			input.TargetServerOptions = "Asia, America, Europe, TW_HK_MO"
 		}
-	case "SINGLE_ID", "RIOT_ID", "GENERIC":
+	case "SINGLE_UID", "STRING_UID":
 		// tidak perlu secondary label
 	}
 
@@ -185,7 +185,7 @@ func UpdateCatalog(c *fiber.Ctx) error {
 	// Validasi TargetType.
 	input.TargetType = strings.TrimSpace(input.TargetType)
 	switch input.TargetType {
-	case "SINGLE_ID", "DUAL_INPUT", "SERVER_DROPDOWN", "RIOT_ID", "GENERIC":
+	case "SINGLE_UID", "UID_ZONE", "UID_SERVER", "STRING_UID":
 		// ok
 	default:
 		if input.TargetType == "" {
@@ -193,21 +193,21 @@ func UpdateCatalog(c *fiber.Ctx) error {
 		} else {
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 				"error": "TargetType tidak dikenal: " + input.TargetType +
-						". Gunakan SINGLE_ID, DUAL_INPUT, SERVER_DROPDOWN, RIOT_ID, atau GENERIC.",
+					". Gunakan SINGLE_UID, UID_ZONE, UID_SERVER, atau STRING_UID.",
 			})
 		}
 	}
 
 	// Validasi hubungan TargetType <-> TargetSecondaryLabel / TargetServerOptions.
 	switch input.TargetType {
-	case "DUAL_INPUT":
+	case "UID_ZONE":
 		if strings.TrimSpace(input.TargetSecondaryLabel) == "" {
 			input.TargetSecondaryLabel = catalog.TargetSecondaryLabel
 		}
 		if strings.TrimSpace(input.TargetSecondaryLabel) == "" {
 			input.TargetSecondaryLabel = "Zone ID"
 		}
-	case "SERVER_DROPDOWN":
+	case "UID_SERVER":
 		if strings.TrimSpace(input.TargetSecondaryLabel) == "" {
 			input.TargetSecondaryLabel = catalog.TargetSecondaryLabel
 		}
@@ -220,7 +220,7 @@ func UpdateCatalog(c *fiber.Ctx) error {
 		if strings.TrimSpace(input.TargetServerOptions) == "" {
 			input.TargetServerOptions = "Asia, America, Europe, TW_HK_MO"
 		}
-	case "SINGLE_ID", "RIOT_ID", "GENERIC":
+	case "SINGLE_UID", "STRING_UID":
 		// tidak perlu secondary label
 	}
 

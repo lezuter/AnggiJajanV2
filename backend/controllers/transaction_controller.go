@@ -167,22 +167,22 @@ func parseCheckoutTarget(req models.CheckoutRequest) (primaryTarget string, seco
 	return primaryTarget, secondaryTarget
 }
 
-// isValidTargetType memeriksa apakah tipe target adalah salah satu dari 5 nilai resmi.
+// isValidTargetType memeriksa apakah tipe target adalah salah satu dari 4 nilai resmi.
 func isValidTargetType(tt string) bool {
 	switch tt {
-	case "SINGLE_ID", "DUAL_INPUT", "SERVER_DROPDOWN", "RIOT_ID", "GENERIC":
+	case "SINGLE_UID", "UID_ZONE", "UID_SERVER", "STRING_UID":
 		return true
 	}
 	return false
 }
 
 // normalizeTargetType mengembalikan TargetType yang dinormalisasi.
-// Jika kosong, default "SINGLE_ID". Jika bukan 5 nilai sah, kembalikan string kosong
+// Jika kosong, default "SINGLE_UID". Jika bukan 4 nilai sah, kembalikan string kosong
 // agar pemanggil bisa menolak dengan 400.
 func normalizeTargetType(tt string) string {
 	tt = strings.TrimSpace(tt)
 	if tt == "" {
-		return "SINGLE_ID"
+		return "SINGLE_UID"
 	}
 	if isValidTargetType(tt) {
 		return tt
@@ -845,7 +845,7 @@ func ManualOrder(c *fiber.Ctx) error {
 	// Gunakan Catalog.TargetType sebagai source of truth, bukan req.TargetType.
 	catalogTargetType := strings.TrimSpace(p.Catalog.TargetType)
 	if catalogTargetType == "" {
-		catalogTargetType = "SINGLE_ID"
+		catalogTargetType = "SINGLE_UID"
 	}
 	targetPrimary, targetSecondary := parseCheckoutTargetManual(req)
 
@@ -1190,10 +1190,10 @@ func Checkout(c *fiber.Ctx) error {
 		}
 
 		// === VALIDASI TARGETSECONDARY ===
-		// Wajib untuk DUAL_INPUT, SERVER_DROPDOWN, RIOT_ID.
-		// Boleh kosong untuk SINGLE_ID.
+		// Wajib untuk UID_ZONE, UID_SERVER.
+		// Boleh kosong untuk SINGLE_UID, STRING_UID.
 		switch catalogTargetType {
-		case "DUAL_INPUT", "SERVER_DROPDOWN", "RIOT_ID":
+		case "UID_ZONE", "UID_SERVER":
 			if strings.TrimSpace(targetSecondary) == "" {
 				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 					"error": "Zone/Server wajib diisi untuk tipe target ini",
